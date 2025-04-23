@@ -1,0 +1,2398 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "vgtpbx_tenant"]
+}
+
+model auth_group {
+  id                                Int                                 @id @default(autoincrement())
+  name                              String                              @unique @db.VarChar(150)
+  auth_group_permissions            auth_group_permissions[]
+  auth_user_groups                  auth_user_groups[]
+  pbx_contacts_groups               pbx_contacts_groups[]
+  pbx_device_vendor_function_groups pbx_device_vendor_function_groups[]
+  pbx_menu_item_groups              pbx_menu_item_groups[]
+
+  @@index([name], map: "auth_group_name_idx")
+
+  @@schema("public")
+}
+
+model auth_permission {
+  id                         Int                          @id @default(autoincrement())
+  name                       String                       @db.VarChar(255)
+  codename                   String                       @db.VarChar(100)
+  auth_group_permissions     auth_group_permissions[]
+  auth_user_user_permissions auth_user_user_permissions[]
+
+  @@unique([codename], map: "auth_permission_codename_unique")
+
+  @@schema("public")
+}
+
+model auth_group_permissions {
+  id              BigInt          @id @default(autoincrement())
+  groupId         Int            
+  permissionId    Int             
+  auth_permission auth_permission @relation(fields: [permissionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  auth_group      auth_group      @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([groupId, permissionId])
+  @@index([groupId])
+  @@index([permissionId])
+
+  @@schema("public")
+}
+
+model auth_tenant {
+  id          String        @id @db.VarChar(50)
+  accountId   String        @db.VarChar(50) @unique
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  name        String        @db.VarChar(100)
+  domain      String        @db.VarChar(100)
+  description String?       @db.VarChar(500)
+  logo        String?       @db.VarChar(255)
+  plan        String        @default("basic") @db.VarChar(20)
+  maxUsers    Int           @default(5)
+  disabled    Boolean       @default(false)
+  users       auth_user[]
+  pbxDomains  pbx_domains[]
+  messages             Message[]
+  webhooks             Webhook[]
+  integrations         Integration[]
+  notificationSettings NotificationSettings?
+  userMappings         auth_user_mapping[]
+  domainMappings       domain_mapping[]
+
+  @@schema("public")
+
+}
+
+model auth_user {
+  uid                        String                       @id @unique @db.VarChar(50)
+  updatedAt                  DateTime                     @updatedAt
+  email                      String                       @unique @db.VarChar(255)
+  displayName                String?                      @db.VarChar(100)
+  firstName                  String?                      @db.VarChar(150)
+  lastName                   String?                      @db.VarChar(150)
+  avatar                     String?                      @db.VarChar(255)
+  phoneNumber                String?                      @db.VarChar(20)
+  isSuperuser               Boolean                       @default(false)
+  isAdmin                   Boolean                       @default(false)
+  isStaff                   Boolean                       @default(false)
+  emailVerified             Boolean                       @default(false)
+  disabled                  Boolean                       @default(false)
+  tenantId                  String                        @db.VarChar(50)
+  createdAt                 DateTime?
+  lastSignInAt              DateTime?                     
+  auth_tenant               auth_tenant                  @relation(fields: [tenantId], references: [id])
+  auth_user_groups          auth_user_groups[]
+  auth_user_user_permissions  auth_user_user_permissions[]
+  authtoken_token                 authtoken_token?
+  pbx_users                  pbx_users?
+  mapping                   auth_user_mapping?
+
+  @@index([tenantId])
+  @@schema("public")
+}
+
+model auth_user_groups {
+  id         BigInt     @id @default(autoincrement())
+  uid        String     
+  groupId    Int        
+  auth_group auth_group @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  auth_user  auth_user  @relation(fields: [uid], references: [uid], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([uid, groupId])
+  @@index([groupId])
+  @@index([uid])
+
+  @@schema("public")
+}
+
+model auth_user_user_permissions {
+  id              BigInt          @id @default(autoincrement())
+  uid             String          
+  permissionId    Int
+  auth_permission auth_permission @relation(fields: [permissionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  auth_user       auth_user       @relation(fields: [uid], references: [uid], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([uid, permissionId])
+  @@index([permissionId])
+  @@index([uid])
+
+  @@schema("public")
+}
+
+model authtoken_token {
+  key       String    @id @db.VarChar(40)
+  created   DateTime  @db.Timestamptz(6)
+  uid       String    @unique @db.VarChar(50)
+  auth_user auth_user @relation(fields: [uid], references: [uid], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([key])
+
+  @@schema("public")
+}
+
+model auth_user_mapping {
+  uid         String   @id @unique @db.VarChar(50)
+  accountId   String   @db.VarChar(50)
+  schemaName  String   @db.VarChar(100)
+  tenantId    String   @db.VarChar(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        auth_user  @relation(fields: [uid], references: [uid], onDelete: Cascade)
+  tenant      auth_tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([tenantId])
+  @@schema("public")
+}
+
+model domain_mapping {
+  id          String   @id @default(cuid()) @db.VarChar(50)
+  fullDomain  String   @unique @db.VarChar(255)
+  tenantId    String   @db.VarChar(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      auth_tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@index([tenantId])
+  @@schema("public")
+}
+
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_access_control_nodes {
+  id                   String              @id @db.Uuid
+  type                 String              @db.VarChar(8)
+  cidr                 String?             @db.VarChar(64)
+  domain               String?             @db.VarChar(64)
+  description          String?             @db.VarChar(254)
+  created              DateTime?           @db.Timestamptz(6)
+  updated              DateTime?           @db.Timestamptz(6)
+  synchronised         DateTime?           @db.Timestamptz(6)
+  updated_by           String              @db.VarChar(64)
+  access_control_id_id String              @db.Uuid
+  pbx_access_controls  pbx_access_controls @relation(fields: [access_control_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_access_control_n_access_control_id_id_d842e92a_fk_pbx_acces")
+
+  @@index([access_control_id_id], map: "pbx_access_control_nodes_access_control_id_id_d842e92a")
+
+  @@schema("public")
+}
+
+model pbx_access_controls {
+  id                       String                     @id @db.Uuid
+  name                     String                     @db.VarChar(64)
+  default                  String                     @db.VarChar(8)
+  description              String?                    @db.VarChar(254)
+  created                  DateTime?                  @db.Timestamptz(6)
+  updated                  DateTime?                  @db.Timestamptz(6)
+  synchronised             DateTime?                  @db.Timestamptz(6)
+  updated_by               String                     @db.VarChar(64)
+  pbx_access_control_nodes pbx_access_control_nodes[]
+
+  @@schema("public")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_auto_report {
+  id                      String                    @id @db.Uuid
+  name                    String?                   @db.VarChar(64)
+  title                   String?                   @db.VarChar(128)
+  message                 String?
+  footer                  String?                   @db.VarChar(256)
+  recipients              String
+  frequency               String?                   @db.VarChar(8)
+  enabled                 String                    @db.VarChar(8)
+  description             String?                   @db.VarChar(128)
+  created                 DateTime?                 @db.Timestamptz(6)
+  updated                 DateTime?                 @db.Timestamptz(6)
+  synchronised            DateTime?                 @db.Timestamptz(6)
+  updated_by              String                    @db.VarChar(64)
+  domain_uuid             String?                   @db.Uuid
+  pbx_domains             pbx_domains?              @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_auto_report_domain_uuid_80816be5_fk_pbx_domains_id")
+  pbx_auto_report_section pbx_auto_report_section[]
+
+  @@index([domain_uuid], map: "pbx_auto_report_domain_uuid_80816be5")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_auto_report_section {
+  id              String           @id @db.Uuid
+  title           String?          @db.VarChar(128)
+  sequence        Decimal          @db.Decimal(3, 0)
+  sql             String
+  message         String?
+  enabled         String           @db.VarChar(8)
+  description     String?          @db.VarChar(128)
+  created         DateTime?        @db.Timestamptz(6)
+  updated         DateTime?        @db.Timestamptz(6)
+  synchronised    DateTime?        @db.Timestamptz(6)
+  updated_by      String           @db.VarChar(64)
+  auto_report_id  String?          @db.Uuid
+  pbx_auto_report pbx_auto_report? @relation(fields: [auto_report_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_auto_report_sect_auto_report_id_ca93bf77_fk_pbx_auto_")
+
+  @@index([auto_report_id], map: "pbx_auto_report_section_auto_report_id_ca93bf77")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_bridges {
+  id           String       @id @db.Uuid
+  name         String       @db.VarChar(32)
+  destination  String       @db.VarChar(256)
+  disabled     Boolean      @default(false)
+  description  String?      @db.VarChar(64)
+  created      DateTime?    @db.Timestamptz(6)
+  updated      DateTime?    @db.Timestamptz(6)
+  synchronised DateTime?    @db.Timestamptz(6)
+  updated_by   String       @db.VarChar(64)
+  domain_uuid  String?      @db.Uuid
+  pbx_domains  pbx_domains? @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_bridges_domain_uuid_41623292_fk_pbx_domains_id")
+
+  @@index([domain_uuid], map: "pbx_bridges_domain_uuid_41623292")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_call_block {
+  id           String       @id @db.Uuid
+  name         String?      @db.VarChar(64)
+  number       String?      @db.VarChar(64)
+  block_count  Decimal      @db.Decimal(6, 0)
+  app          String?      @db.VarChar(32)
+  data         String?      @db.VarChar(256)
+  enabled      String       @db.VarChar(8)
+  description  String?      @db.VarChar(64)
+  created      DateTime?    @db.Timestamptz(6)
+  updated      DateTime?    @db.Timestamptz(6)
+  synchronised DateTime?    @db.Timestamptz(6)
+  updated_by   String       @db.VarChar(64)
+  domain_uuid  String?      @db.Uuid
+  pbx_domains  pbx_domains? @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_block_domain_uuid_6e47cf15_fk_pbx_domains_id")
+
+  @@index([domain_uuid], map: "pbx_call_block_domain_uuid_6e47cf15")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_call_centre_agents {
+  id                      String                    @id @db.Uuid
+  name                    String?                   @db.VarChar(64)
+  agent_type              String?                   @db.VarChar(16)
+  call_timeout            Decimal                   @db.Decimal(3, 0)
+  agent_id                String?                   @db.VarChar(64)
+  agent_pin               String                    @db.VarChar(16)
+  contact                 String?                   @db.VarChar(256)
+  status                  String?                   @db.VarChar(32)
+  data                    String                    @db.VarChar(64)
+  no_answer_delay_time    Decimal                   @db.Decimal(3, 0)
+  max_no_answer           Decimal                   @db.Decimal(3, 0)
+  wrap_up_time            Decimal                   @db.Decimal(3, 0)
+  reject_delay_time       Decimal                   @db.Decimal(3, 0)
+  busy_delay_time         Decimal                   @db.Decimal(3, 0)
+  created                 DateTime?                 @db.Timestamptz(6)
+  updated                 DateTime?                 @db.Timestamptz(6)
+  synchronised            DateTime?                 @db.Timestamptz(6)
+  updated_by              String                    @db.VarChar(64)
+  domain_uuid             String?                   @db.Uuid
+  user_uuid               String?                   @db.Uuid
+  pbx_users               pbx_users?                @relation(fields: [user_uuid], references: [user_uuid], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_centre_agen_user_uuid_6eab1ecb_fk_pbx_users")
+  pbx_domains             pbx_domains?              @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_centre_agents_domain_uuid_e3542885_fk_pbx_domains_id")
+  pbx_call_centre_tiers   pbx_call_centre_tiers[]
+  pbx_cc_agent_status_log pbx_cc_agent_status_log[]
+
+  @@unique([domain_uuid, agent_id], map: "pbx_call_centre_agents_domain_uuid_agent_id_cfab14bd_uniq")
+  @@index([domain_uuid], map: "pbx_call_centre_agents_domain_uuid_e3542885")
+  @@index([user_uuid], map: "pbx_call_centre_agents_user_uuid_6eab1ecb")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_call_centre_queues {
+  id                    String                  @id @db.Uuid
+  name                  String?                 @db.VarChar(64)
+  extension             String                  @db.VarChar(32)
+  greeting              String?                 @db.VarChar(256)
+  strategy              String?                 @db.VarChar(32)
+  moh_sound             String?                 @db.VarChar(256)
+  record_template       String?                 @db.VarChar(256)
+  time_base_score       String?                 @db.VarChar(16)
+  max_wait_time         Decimal                 @db.Decimal(3, 0)
+  max_wait_time_na      Decimal                 @db.Decimal(3, 0)
+  max_wait_time_natr    Decimal                 @db.Decimal(3, 0)
+  timeout_action        String?                 @db.VarChar(256)
+  tier_rules_apply      String                  @db.VarChar(8)
+  tier_rule_wait_sec    Decimal                 @db.Decimal(3, 0)
+  tier_rule_wm_level    String                  @db.VarChar(8)
+  tier_rule_nanw        String                  @db.VarChar(8)
+  discard_abndnd_after  Decimal                 @db.Decimal(4, 0)
+  abndnd_resume_allowed String                  @db.VarChar(8)
+  cid_name_prefix       String?                 @db.VarChar(32)
+  announce_sound        String?                 @db.VarChar(256)
+  announce_frequency    Decimal?                @db.Decimal(3, 0)
+  cc_exit_keys          String?                 @db.VarChar(8)
+  enabled               String                  @db.VarChar(8)
+  description           String?                 @db.VarChar(64)
+  dialplan_id           String?                 @db.Uuid
+  created               DateTime?               @db.Timestamptz(6)
+  updated               DateTime?               @db.Timestamptz(6)
+  synchronised          DateTime?               @db.Timestamptz(6)
+  updated_by            String                  @db.VarChar(64)
+  domain_uuid           String?                 @db.Uuid
+  wb_aban_crit_level    Decimal                 @db.Decimal(3, 0)
+  wb_aban_warn_level    Decimal                 @db.Decimal(3, 0)
+  wb_agents_per_row     Decimal                 @db.Decimal(3, 0)
+  wb_show_agents        String                  @db.VarChar(8)
+  wb_wait_crit_level    Decimal                 @db.Decimal(3, 0)
+  wb_wait_warn_level    Decimal                 @db.Decimal(3, 0)
+  pbx_domains           pbx_domains?            @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_centre_queues_domain_uuid_496e4188_fk_pbx_domains_id")
+  pbx_call_centre_tiers pbx_call_centre_tiers[]
+
+  @@index([domain_uuid], map: "pbx_call_centre_queues_domain_uuid_496e4188")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_call_centre_tiers {
+  id                     String                 @id @db.Uuid
+  tier_level             Decimal                @db.Decimal(4, 0)
+  tier_position          Decimal                @db.Decimal(4, 0)
+  created                DateTime?              @db.Timestamptz(6)
+  updated                DateTime?              @db.Timestamptz(6)
+  synchronised           DateTime?              @db.Timestamptz(6)
+  updated_by             String                 @db.VarChar(64)
+  agent_id_id            String                 @db.Uuid
+  queue_id_id            String                 @db.Uuid
+  pbx_call_centre_agents pbx_call_centre_agents @relation(fields: [agent_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_centre_tier_agent_id_id_bbc2132e_fk_pbx_call_")
+  pbx_call_centre_queues pbx_call_centre_queues @relation(fields: [queue_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_centre_tier_queue_id_id_24aa23a1_fk_pbx_call_")
+
+  @@index([agent_id_id], map: "pbx_call_centre_tiers_agent_id_id_bbc2132e")
+  @@index([queue_id_id], map: "pbx_call_centre_tiers_queue_id_id_24aa23a1")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_call_flows {
+  id              String       @id @db.Uuid
+  name            String?      @db.VarChar(64)
+  extension       String       @db.VarChar(32)
+  feature_code    String       @db.VarChar(8)
+  status          String       @db.VarChar(8)
+  pin_number      String?      @db.VarChar(16)
+  label           String?      @db.VarChar(32)
+  sound           String?      @db.VarChar(254)
+  app             String?      @db.VarChar(32)
+  data            String?      @db.VarChar(256)
+  alternate_label String?      @db.VarChar(32)
+  alternate_sound String?      @db.VarChar(254)
+  alternate_app   String?      @db.VarChar(32)
+  alternate_data  String?      @db.VarChar(256)
+  context         String?      @db.VarChar(128)
+  description     String?      @db.VarChar(64)
+  dialplan_id     String?      @db.Uuid
+  created         DateTime?    @db.Timestamptz(6)
+  updated         DateTime?    @db.Timestamptz(6)
+  synchronised    DateTime?    @db.Timestamptz(6)
+  updated_by      String       @db.VarChar(64)
+  domain_uuid     String?      @db.Uuid
+  pbx_domains     pbx_domains? @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_flows_domain_uuid_436e3fcb_fk_pbx_domains_id")
+
+  @@index([context], map: "pbx_call_flows_context_1e7d42c9")
+  @@index([context], map: "pbx_call_flows_context_1e7d42c9_like")
+  @@index([domain_uuid], map: "pbx_call_flows_domain_uuid_436e3fcb")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_call_recordings {
+  id           String       @id @db.Uuid
+  filename     String
+  name         String       @db.VarChar(64)
+  year         String       @db.VarChar(8)
+  month        String       @db.VarChar(8)
+  day          String       @db.VarChar(8)
+  description  String?      @db.VarChar(128)
+  created      DateTime?    @db.Timestamptz(6)
+  updated      DateTime?    @db.Timestamptz(6)
+  synchronised DateTime?    @db.Timestamptz(6)
+  updated_by   String       @db.VarChar(64)
+  domain_uuid  String?      @db.Uuid
+  filestore    String       @db.VarChar(128)
+  pbx_domains  pbx_domains? @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_recordings_domain_uuid_3687ddea_fk_pbx_domains_id")
+
+  @@index([domain_uuid], map: "pbx_call_recordings_domain_uuid_3687ddea")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_call_timeline {
+  id                            String       @id @db.Uuid
+  core_uuid                     String       @db.Uuid
+  hostname                      String?      @db.VarChar(128)
+  switchame                     String?      @db.VarChar(128)
+  switch_ipv4                   String?      @db.VarChar(16)
+  switch_ipv6                   String?      @db.VarChar(64)
+  call_uuid                     String?      @db.Uuid
+  event_name                    String       @db.VarChar(64)
+  event_subclass                String?      @db.VarChar(64)
+  event_date_local              String?      @db.VarChar(64)
+  event_epoch                   Decimal      @db.Decimal(32, 0)
+  event_sequence                Decimal      @db.Decimal(32, 0)
+  event_calling_file            String?      @db.VarChar(64)
+  event_calling_function        String?      @db.VarChar(64)
+  direction                     String?      @db.VarChar(16)
+  other_leg_direction           String?      @db.VarChar(16)
+  context                       String?      @db.VarChar(128)
+  other_leg_context             String?      @db.VarChar(128)
+  hit_dialplan                  String       @db.VarChar(8)
+  caller_user_name              String?      @db.VarChar(32)
+  caller_ani                    String?      @db.VarChar(32)
+  other_leg_user_name           String?      @db.VarChar(32)
+  caller_uuid                   String?      @db.Uuid
+  other_leg_caller_uuid         String?      @db.Uuid
+  channel_name                  String?      @db.VarChar(256)
+  channel_state                 String?      @db.VarChar(32)
+  channel_call_state            String?      @db.VarChar(32)
+  answer_state                  String?      @db.VarChar(32)
+  bridge_channel                String?      @db.VarChar(256)
+  caller_id_name                String?      @db.VarChar(32)
+  other_leg_caller_id_name      String?      @db.VarChar(32)
+  caller_id_number              String?      @db.VarChar(32)
+  other_leg_caller_id_number    String?      @db.VarChar(32)
+  caller_destination            String?      @db.VarChar(32)
+  other_leg_caller_destination  String?      @db.VarChar(32)
+  network_addr                  String?      @db.VarChar(64)
+  other_leg_network_addr        String?      @db.VarChar(64)
+  created_time                  Decimal      @db.Decimal(32, 0)
+  other_leg_created_time        Decimal      @db.Decimal(32, 0)
+  answered_time                 Decimal      @db.Decimal(32, 0)
+  other_leg_answered_time       Decimal      @db.Decimal(32, 0)
+  progress_time                 Decimal      @db.Decimal(32, 0)
+  other_leg_progress_time       Decimal      @db.Decimal(32, 0)
+  progress_media_time           Decimal      @db.Decimal(32, 0)
+  other_leg_progress_media_time Decimal      @db.Decimal(32, 0)
+  hangup_time                   Decimal      @db.Decimal(32, 0)
+  other_leg_hangup_time         Decimal      @db.Decimal(32, 0)
+  transfer_time                 Decimal      @db.Decimal(32, 0)
+  other_leg_transfer_time       Decimal      @db.Decimal(32, 0)
+  resurrect_time                Decimal      @db.Decimal(32, 0)
+  other_leg_resurrect_time      Decimal      @db.Decimal(32, 0)
+  bridged_time                  Decimal      @db.Decimal(32, 0)
+  other_leg_bridged_time        Decimal      @db.Decimal(32, 0)
+  last_hold_time                Decimal      @db.Decimal(32, 0)
+  other_leg_last_hold_time      Decimal      @db.Decimal(32, 0)
+  hold_accu_time                Decimal      @db.Decimal(32, 0)
+  other_leg_hold_accu_time      Decimal      @db.Decimal(32, 0)
+  application                   String?      @db.VarChar(32)
+  application_uuid              String?      @db.Uuid
+  application_data              String?      @db.VarChar(256)
+  application_status            String?      @db.VarChar(32)
+  application_file_path         String?      @db.VarChar(256)
+  application_seconds           Decimal?     @db.Decimal(32, 0)
+  transfer_source               String?      @db.VarChar(256)
+  cc_side                       String?      @db.VarChar(16)
+  cc_queue                      String?      @db.Uuid
+  cc_action                     String?      @db.VarChar(32)
+  cc_count                      Decimal      @db.Decimal(32, 0)
+  cc_member_joining_time        Decimal      @db.Decimal(32, 0)
+  cc_member_leaving_time        Decimal      @db.Decimal(32, 0)
+  cc_cause                      String?      @db.VarChar(32)
+  cc_hangup_cause               String?      @db.VarChar(32)
+  cc_cancel_reason              String?      @db.VarChar(32)
+  cc_member_uuid                String?      @db.Uuid
+  cc_member_session_uuid        String?      @db.Uuid
+  cc_member_caller_id_name      String?      @db.VarChar(32)
+  cc_member_caller_id_number    String?      @db.VarChar(32)
+  cc_agent                      String?      @db.VarChar(128)
+  cc_agent_uuid                 String?      @db.Uuid
+  cc_agent_system               String?      @db.VarChar(32)
+  cc_agent_type                 String?      @db.VarChar(32)
+  cc_agent_state                String?      @db.VarChar(32)
+  cc_agent_called_time          Decimal      @db.Decimal(32, 0)
+  cc_agent_answered_time        Decimal      @db.Decimal(32, 0)
+  dtmf_digit                    String?      @db.VarChar(8)
+  dtmf_duration                 Decimal      @db.Decimal(5, 0)
+  dtmf_source                   String?      @db.VarChar(32)
+  cf_name                       String?      @db.VarChar(256)
+  cf_action                     String?      @db.VarChar(32)
+  cf_uuid                       String?      @db.Uuid
+  cf_domain                     String?      @db.VarChar(128)
+  cf_size                       Decimal      @db.Decimal(5, 0)
+  cf_ghosts                     Decimal      @db.Decimal(5, 0)
+  cf_profile_name               String?      @db.VarChar(64)
+  cf_member_type                String?      @db.VarChar(32)
+  cf_member_id                  String?      @db.VarChar(32)
+  created                       DateTime?    @db.Timestamptz(6)
+  updated                       DateTime?    @db.Timestamptz(6)
+  synchronised                  DateTime?    @db.Timestamptz(6)
+  updated_by                    String       @db.VarChar(64)
+  domain_id_id                  String?      @db.Uuid
+  application_action            String?      @db.VarChar(32)
+  application_name              String?      @db.VarChar(64)
+  general_error                 String?      @db.VarChar(64)
+  other_leg_unique_id           String?      @db.Uuid
+  unique_id                     String?      @db.Uuid
+  pbx_domains                   pbx_domains? @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_call_timeline_domain_id_id_5b2e0564_fk_pbx_domains_id")
+
+  @@index([call_uuid], map: "pbx_call_timeline_call_uuid_72a645a2")
+  @@index([caller_destination], map: "pbx_call_timeline_caller_destination_b490e043")
+  @@index([caller_destination], map: "pbx_call_timeline_caller_destination_b490e043_like")
+  @@index([caller_id_number], map: "pbx_call_timeline_caller_id_number_4af58329")
+  @@index([caller_id_number], map: "pbx_call_timeline_caller_id_number_4af58329_like")
+  @@index([context], map: "pbx_call_timeline_context_1954e0b5")
+  @@index([context], map: "pbx_call_timeline_context_1954e0b5_like")
+  @@index([core_uuid], map: "pbx_call_timeline_core_uuid_93da4e16")
+  @@index([domain_id_id], map: "pbx_call_timeline_domain_id_id_5b2e0564")
+  @@index([event_epoch], map: "pbx_call_timeline_event_epoch_487ada5d")
+  @@index([other_leg_unique_id], map: "pbx_call_timeline_other_leg_unique_id_e3fa69df")
+  @@index([unique_id], map: "pbx_call_timeline_unique_id_f9a14337")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_cc_agent_status_log {
+  id                     String                 @id @db.Uuid
+  status                 String?                @db.VarChar(32)
+  created                DateTime?              @db.Timestamptz(6)
+  updated                DateTime?              @db.Timestamptz(6)
+  synchronised           DateTime?              @db.Timestamptz(6)
+  updated_by             String                 @db.VarChar(64)
+  agent_id_id            String                 @db.Uuid
+  pbx_call_centre_agents pbx_call_centre_agents @relation(fields: [agent_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_cc_agent_status__agent_id_id_2fe7e484_fk_pbx_call_")
+
+  @@index([agent_id_id], map: "pbx_cc_agent_status_log_agent_id_id_2fe7e484")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_conference_centres {
+  id                   String                 @id @db.Uuid
+  name                 String?                @db.VarChar(64)
+  extension            String                 @db.VarChar(32)
+  greeting             String?                @db.VarChar(254)
+  enabled              String                 @db.VarChar(8)
+  description          String?                @db.VarChar(64)
+  dialplan_id          String?                @db.Uuid
+  created              DateTime?              @db.Timestamptz(6)
+  updated              DateTime?              @db.Timestamptz(6)
+  synchronised         DateTime?              @db.Timestamptz(6)
+  updated_by           String                 @db.VarChar(64)
+  domain_uuid          String?                @db.Uuid
+  pbx_domains          pbx_domains?           @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_centres_domain_uuid_734e0ffb_fk_pbx_domains_id")
+  pbx_conference_rooms pbx_conference_rooms[]
+
+  @@index([domain_uuid], map: "pbx_conference_centres_domain_uuid_734e0ffb")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_conference_control_details {
+  id                      String                  @id @db.Uuid
+  digits                  String                  @db.VarChar(8)
+  action                  String                  @db.VarChar(64)
+  data                    String?                 @db.VarChar(254)
+  enabled                 String                  @db.VarChar(8)
+  created                 DateTime?               @db.Timestamptz(6)
+  updated                 DateTime?               @db.Timestamptz(6)
+  synchronised            DateTime?               @db.Timestamptz(6)
+  updated_by              String                  @db.VarChar(64)
+  conf_ctrl_id_id         String                  @db.Uuid
+  pbx_conference_controls pbx_conference_controls @relation(fields: [conf_ctrl_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_contr_conf_ctrl_id_id_487dc607_fk_pbx_confe")
+
+  @@index([conf_ctrl_id_id], map: "pbx_conference_control_details_conf_ctrl_id_id_487dc607")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_conference_controls {
+  id                             String                           @id @db.Uuid
+  name                           String                           @db.VarChar(32)
+  enabled                        String                           @db.VarChar(8)
+  description                    String?                          @db.VarChar(256)
+  created                        DateTime?                        @db.Timestamptz(6)
+  updated                        DateTime?                        @db.Timestamptz(6)
+  synchronised                   DateTime?                        @db.Timestamptz(6)
+  updated_by                     String                           @db.VarChar(64)
+  pbx_conference_control_details pbx_conference_control_details[]
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_conference_profile_params {
+  id                      String                  @id @db.Uuid
+  name                    String                  @db.VarChar(64)
+  value                   String?                 @db.VarChar(254)
+  enabled                 String                  @db.VarChar(8)
+  description             String?                 @db.VarChar(254)
+  created                 DateTime?               @db.Timestamptz(6)
+  updated                 DateTime?               @db.Timestamptz(6)
+  synchronised            DateTime?               @db.Timestamptz(6)
+  updated_by              String                  @db.VarChar(64)
+  conf_profile_id_id      String                  @db.Uuid
+  pbx_conference_profiles pbx_conference_profiles @relation(fields: [conf_profile_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_profi_conf_profile_id_id_4829dcec_fk_pbx_confe")
+
+  @@index([conf_profile_id_id], map: "pbx_conference_profile_params_conf_profile_id_id_4829dcec")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_conference_profiles {
+  id                            String                          @id @db.Uuid
+  name                          String                          @db.VarChar(32)
+  enabled                       String                          @db.VarChar(8)
+  description                   String?                         @db.VarChar(254)
+  created                       DateTime?                       @db.Timestamptz(6)
+  updated                       DateTime?                       @db.Timestamptz(6)
+  synchronised                  DateTime?                       @db.Timestamptz(6)
+  updated_by                    String                          @db.VarChar(64)
+  pbx_conference_profile_params pbx_conference_profile_params[]
+  pbx_conference_rooms          pbx_conference_rooms[]
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_conference_room_users {
+  id                   String               @id @db.Uuid
+  created              DateTime?            @db.Timestamptz(6)
+  updated              DateTime?            @db.Timestamptz(6)
+  synchronised         DateTime?            @db.Timestamptz(6)
+  updated_by           String               @db.VarChar(64)
+  c_room_id_id         String               @db.Uuid
+  user_uuid            String?              @db.Uuid
+  pbx_conference_rooms pbx_conference_rooms @relation(fields: [c_room_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_room__c_room_id_id_b06cc2c1_fk_pbx_confe")
+  pbx_users            pbx_users?           @relation(fields: [user_uuid], references: [user_uuid], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_room__user_uuid_f8ec5578_fk_pbx_users")
+
+  @@index([c_room_id_id], map: "pbx_conference_room_users_c_room_id_id_b06cc2c1")
+  @@index([user_uuid], map: "pbx_conference_room_users_user_uuid_f8ec5578")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_conference_rooms {
+  id                        String                      @id @db.Uuid
+  name                      String?                     @db.VarChar(64)
+  moderator_pin             String                      @db.VarChar(16)
+  participant_pin           String                      @db.VarChar(16)
+  max_members               Decimal                     @db.Decimal(3, 0)
+  start_time                DateTime?                   @db.Timestamptz(6)
+  stop_time                 DateTime?                   @db.Timestamptz(6)
+  record                    String                      @db.VarChar(8)
+  wait_mod                  String                      @db.VarChar(8)
+  announce                  String                      @db.VarChar(8)
+  sounds                    String                      @db.VarChar(8)
+  mute                      String                      @db.VarChar(8)
+  enabled                   String                      @db.VarChar(8)
+  description               String?                     @db.VarChar(64)
+  created                   DateTime?                   @db.Timestamptz(6)
+  updated                   DateTime?                   @db.Timestamptz(6)
+  synchronised              DateTime?                   @db.Timestamptz(6)
+  updated_by                String                      @db.VarChar(64)
+  c_centre_id_id            String                      @db.Uuid
+  c_profile_id_id           String                      @db.Uuid
+  pbx_conference_room_users pbx_conference_room_users[]
+  pbx_conference_centres    pbx_conference_centres      @relation(fields: [c_centre_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_rooms_c_centre_id_id_b917996a_fk_pbx_confe")
+  pbx_conference_profiles   pbx_conference_profiles     @relation(fields: [c_profile_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_rooms_c_profile_id_id_14ed4f86_fk_pbx_confe")
+  pbx_conference_sessions   pbx_conference_sessions[]
+
+  @@unique([c_centre_id_id, moderator_pin], map: "pbx_conference_rooms_c_centre_id_id_moderator_pin_b138db4e_uniq")
+  @@unique([c_centre_id_id, participant_pin], map: "pbx_conference_rooms_c_centre_id_id_participa_c8fb4ea1_uniq")
+  @@index([c_centre_id_id], map: "pbx_conference_rooms_c_centre_id_id_b917996a")
+  @@index([c_profile_id_id], map: "pbx_conference_rooms_c_profile_id_id_14ed4f86")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_conference_sessions {
+  id                   String               @id @db.Uuid
+  caller_id_name       String?              @db.VarChar(128)
+  caller_id_number     String?              @db.VarChar(64)
+  profile              String?              @db.VarChar(32)
+  live                 String               @db.VarChar(8)
+  recording            String?              @db.VarChar(256)
+  start                DateTime?            @db.Timestamptz(6)
+  end                  DateTime?            @db.Timestamptz(6)
+  created              DateTime?            @db.Timestamptz(6)
+  updated              DateTime?            @db.Timestamptz(6)
+  synchronised         DateTime?            @db.Timestamptz(6)
+  updated_by           String               @db.VarChar(64)
+  c_room_id_id         String               @db.Uuid
+  pbx_conference_rooms pbx_conference_rooms @relation(fields: [c_room_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_conference_sessi_c_room_id_id_f5c1cfb4_fk_pbx_confe")
+
+  @@index([c_room_id_id], map: "pbx_conference_sessions_c_room_id_id_f5c1cfb4")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts {
+  id                    String                  @id @db.Uuid
+  fn                    String                  @db.VarChar(254)
+  family_name           String                  @db.VarChar(64)
+  given_name            String?                 @db.VarChar(64)
+  additional_name       String?                 @db.VarChar(64)
+  honorific_prefix      String?                 @db.VarChar(32)
+  honorific_suffix      String?                 @db.VarChar(32)
+  nickname              String?                 @db.VarChar(64)
+  timezone              String?                 @db.VarChar(128)
+  notes                 String?
+  enabled               String                  @db.VarChar(8)
+  created               DateTime?               @db.Timestamptz(6)
+  updated               DateTime?               @db.Timestamptz(6)
+  synchronised          DateTime?               @db.Timestamptz(6)
+  updated_by            String                  @db.VarChar(64)
+  domain_id_id          String?                 @db.Uuid
+  user_id_id            BigInt?
+  pbx_domains           pbx_domains?            @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_domain_id_id_5e67d2a4_fk_pbx_domains_id")
+  pbx_users             pbx_users?              @relation(fields: [user_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_user_id_id_0ad8c3a4_fk_pbx_users_id")
+  pbx_contacts_address  pbx_contacts_address[]
+  pbx_contacts_category pbx_contacts_category[]
+  pbx_contacts_dates    pbx_contacts_dates[]
+  pbx_contacts_email    pbx_contacts_email[]
+  pbx_contacts_geo      pbx_contacts_geo[]
+  pbx_contacts_groups   pbx_contacts_groups[]
+  pbx_contacts_org      pbx_contacts_org[]
+  pbx_contacts_tel      pbx_contacts_tel[]
+  pbx_contacts_url      pbx_contacts_url[]
+
+  @@index([domain_id_id], map: "pbx_contacts_domain_id_id_5e67d2a4")
+  @@index([user_id_id], map: "pbx_contacts_user_id_id_0ad8c3a4")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_address {
+  id               String       @id @db.Uuid
+  post_office_box  String?      @db.VarChar(64)
+  extended_address String?      @db.VarChar(128)
+  street_address   String       @db.VarChar(128)
+  locality         String?      @db.VarChar(128)
+  region           String?      @db.VarChar(128)
+  postal_code      String       @db.VarChar(16)
+  country_name     String?      @db.VarChar(128)
+  addr_type        String       @db.VarChar(16)
+  created          DateTime?    @db.Timestamptz(6)
+  updated          DateTime?    @db.Timestamptz(6)
+  synchronised     DateTime?    @db.Timestamptz(6)
+  updated_by       String       @db.VarChar(64)
+  contact_id_id    String       @db.Uuid
+  pbx_contacts     pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_address_contact_id_id_efcbd0bb_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_address_contact_id_id_efcbd0bb")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_category {
+  id            String       @id @db.Uuid
+  category      String       @db.VarChar(64)
+  created       DateTime?    @db.Timestamptz(6)
+  updated       DateTime?    @db.Timestamptz(6)
+  synchronised  DateTime?    @db.Timestamptz(6)
+  updated_by    String       @db.VarChar(64)
+  contact_id_id String       @db.Uuid
+  pbx_contacts  pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_category_contact_id_id_490708cf_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_category_contact_id_id_490708cf")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_dates {
+  id            String       @id @db.Uuid
+  sig_date      DateTime?    @db.Date
+  label         String       @db.VarChar(64)
+  created       DateTime?    @db.Timestamptz(6)
+  updated       DateTime?    @db.Timestamptz(6)
+  synchronised  DateTime?    @db.Timestamptz(6)
+  updated_by    String       @db.VarChar(64)
+  contact_id_id String       @db.Uuid
+  pbx_contacts  pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_dates_contact_id_id_954dc217_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_dates_contact_id_id_954dc217")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_email {
+  id            String       @id @db.Uuid
+  email_type    String       @db.VarChar(16)
+  email         String       @db.VarChar(1024)
+  created       DateTime?    @db.Timestamptz(6)
+  updated       DateTime?    @db.Timestamptz(6)
+  synchronised  DateTime?    @db.Timestamptz(6)
+  updated_by    String       @db.VarChar(64)
+  contact_id_id String       @db.Uuid
+  pbx_contacts  pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_email_contact_id_id_a3fd5069_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_email_contact_id_id_a3fd5069")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_geo {
+  id            String       @id @db.Uuid
+  geo_uri       String       @db.VarChar(1024)
+  created       DateTime?    @db.Timestamptz(6)
+  updated       DateTime?    @db.Timestamptz(6)
+  synchronised  DateTime?    @db.Timestamptz(6)
+  updated_by    String       @db.VarChar(64)
+  contact_id_id String       @db.Uuid
+  pbx_contacts  pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_geo_contact_id_id_cbb59f6e_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_geo_contact_id_id_cbb59f6e")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_groups {
+  id            String       @id @db.Uuid
+  name          String?      @db.VarChar(64)
+  created       DateTime?    @db.Timestamptz(6)
+  updated       DateTime?    @db.Timestamptz(6)
+  synchronised  DateTime?    @db.Timestamptz(6)
+  updated_by    String       @db.VarChar(64)
+  contact_id_id String       @db.Uuid
+  group_id      Int
+  pbx_contacts  pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_groups_contact_id_id_83fcf911_fk_pbx_contacts_id")
+  auth_group    auth_group   @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_groups_group_id_dc0329a4_fk_auth_group_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_groups_contact_id_id_83fcf911")
+  @@index([group_id], map: "pbx_contacts_groups_group_id_dc0329a4")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_org {
+  id                String       @id @db.Uuid
+  organisation_name String       @db.VarChar(128)
+  organisation_unit String       @db.VarChar(128)
+  created           DateTime?    @db.Timestamptz(6)
+  updated           DateTime?    @db.Timestamptz(6)
+  synchronised      DateTime?    @db.Timestamptz(6)
+  updated_by        String       @db.VarChar(64)
+  contact_id_id     String       @db.Uuid
+  pbx_contacts      pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_org_contact_id_id_d5127702_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_org_contact_id_id_d5127702")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_tel {
+  id            String       @id @db.Uuid
+  tel_type      String       @db.VarChar(32)
+  number        String       @db.VarChar(128)
+  created       DateTime?    @db.Timestamptz(6)
+  updated       DateTime?    @db.Timestamptz(6)
+  synchronised  DateTime?    @db.Timestamptz(6)
+  updated_by    String       @db.VarChar(64)
+  contact_id_id String       @db.Uuid
+  speed_dial    String?      @db.VarChar(16)
+  pbx_contacts  pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_tel_contact_id_id_3ac83646_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_tel_contact_id_id_3ac83646")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_contacts_url {
+  id            String       @id @db.Uuid
+  url_uri       String       @db.VarChar(1024)
+  created       DateTime?    @db.Timestamptz(6)
+  updated       DateTime?    @db.Timestamptz(6)
+  synchronised  DateTime?    @db.Timestamptz(6)
+  updated_by    String       @db.VarChar(64)
+  contact_id_id String       @db.Uuid
+  pbx_contacts  pbx_contacts @relation(fields: [contact_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_contacts_url_contact_id_id_3a99de63_fk_pbx_contacts_id")
+
+  @@index([contact_id_id], map: "pbx_contacts_url_contact_id_id_3a99de63")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_default_settings {
+  id           String    @id @db.Uuid
+  app_uuid     String?   @db.Uuid
+  category     String    @db.VarChar(32)
+  subcategory  String    @db.VarChar(64)
+  value_type   String    @db.VarChar(32)
+  value        String?   @db.VarChar(254)
+  sequence     Decimal   @db.Decimal(11, 0)
+  enabled      String    @db.VarChar(8)
+  description  String?   @db.VarChar(128)
+  created      DateTime? @db.Timestamptz(6)
+  updated      DateTime? @db.Timestamptz(6)
+  synchronised DateTime? @db.Timestamptz(6)
+  updated_by   String    @db.VarChar(64)
+
+  @@index([category], map: "pbx_default_settings_category_0b9f954d")
+  @@index([category], map: "pbx_default_settings_category_0b9f954d_like")
+  @@index([subcategory], map: "pbx_default_settings_subcategory_5e12c14d")
+  @@index([subcategory], map: "pbx_default_settings_subcategory_5e12c14d_like")
+  @@index([value_type], map: "pbx_default_settings_value_type_0fa61d41")
+  @@index([value_type], map: "pbx_default_settings_value_type_0fa61d41_like")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_keys {
+  id           String      @id @db.Uuid
+  category     String      @db.VarChar(16)
+  key_id       Decimal     @db.Decimal(11, 0)
+  key_type     String      @db.VarChar(64)
+  line         Decimal     @db.Decimal(3, 0)
+  value        String?     @db.VarChar(254)
+  extension    String?     @db.VarChar(64)
+  protected    String      @db.VarChar(8)
+  label        String?     @db.VarChar(64)
+  icon         String?     @db.VarChar(64)
+  created      DateTime?   @db.Timestamptz(6)
+  updated      DateTime?   @db.Timestamptz(6)
+  synchronised DateTime?   @db.Timestamptz(6)
+  updated_by   String      @db.VarChar(64)
+  device_id    String      @db.Uuid
+  pbx_devices  pbx_devices @relation(fields: [device_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_keys_device_id_3e0c21ec_fk_pbx_devices_id")
+
+  @@index([device_id], map: "pbx_device_keys_device_id_3e0c21ec")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_lines {
+  id                       String      @id @db.Uuid
+  line_number              Decimal     @db.Decimal(3, 0)
+  server_address           String?     @db.VarChar(254)
+  server_address_primary   String?     @db.VarChar(254)
+  server_address_secondary String?     @db.VarChar(254)
+  outbound_proxy_primary   String?     @db.VarChar(254)
+  outbound_proxy_secondary String?     @db.VarChar(254)
+  display_name             String?     @db.VarChar(254)
+  user_id                  String?     @db.VarChar(254)
+  auth_id                  String?     @db.VarChar(254)
+  password                 String?     @db.VarChar(254)
+  sip_port                 Decimal?    @db.Decimal(5, 0)
+  sip_transport            String?     @db.VarChar(254)
+  register_expires         Decimal?    @db.Decimal(5, 0)
+  shared_line              String?     @db.VarChar(128)
+  enabled                  String      @db.VarChar(8)
+  created                  DateTime?   @db.Timestamptz(6)
+  updated                  DateTime?   @db.Timestamptz(6)
+  synchronised             DateTime?   @db.Timestamptz(6)
+  updated_by               String      @db.VarChar(64)
+  device_id                String      @db.Uuid
+  pbx_devices              pbx_devices @relation(fields: [device_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_lines_device_id_b3ca7db8_fk_pbx_devices_id")
+
+  @@index([device_id], map: "pbx_device_lines_device_id_b3ca7db8")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_profile_keys {
+  id                  String              @id @db.Uuid
+  category            String              @db.VarChar(16)
+  key_id              Decimal             @db.Decimal(11, 0)
+  key_type            String              @db.VarChar(64)
+  line                Decimal             @db.Decimal(3, 0)
+  value               String?             @db.VarChar(254)
+  extension           String?             @db.VarChar(64)
+  protected           String              @db.VarChar(8)
+  label               String?             @db.VarChar(64)
+  icon                String?             @db.VarChar(64)
+  created             DateTime?           @db.Timestamptz(6)
+  updated             DateTime?           @db.Timestamptz(6)
+  synchronised        DateTime?           @db.Timestamptz(6)
+  updated_by          String              @db.VarChar(64)
+  profile_id          String              @db.Uuid
+  pbx_device_profiles pbx_device_profiles @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_profile_k_profile_id_5c98872a_fk_pbx_devic")
+
+  @@index([profile_id], map: "pbx_device_profile_keys_profile_id_5c98872a")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_profile_settings {
+  id                  String              @id @db.Uuid
+  name                String              @db.VarChar(64)
+  value               String?             @db.VarChar(254)
+  enabled             String              @db.VarChar(8)
+  description         String?             @db.VarChar(254)
+  created             DateTime?           @db.Timestamptz(6)
+  updated             DateTime?           @db.Timestamptz(6)
+  synchronised        DateTime?           @db.Timestamptz(6)
+  updated_by          String              @db.VarChar(64)
+  profile_id          String              @db.Uuid
+  pbx_device_profiles pbx_device_profiles @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_profile_s_profile_id_241770f9_fk_pbx_devic")
+
+  @@index([profile_id], map: "pbx_device_profile_settings_profile_id_241770f9")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_profiles {
+  id                          String                        @id @db.Uuid
+  name                        String                        @db.VarChar(64)
+  enabled                     String                        @db.VarChar(8)
+  description                 String?                       @db.VarChar(254)
+  created                     DateTime?                     @db.Timestamptz(6)
+  updated                     DateTime?                     @db.Timestamptz(6)
+  synchronised                DateTime?                     @db.Timestamptz(6)
+  updated_by                  String                        @db.VarChar(64)
+  domain_id_id                String?                       @db.Uuid
+  vendor_id                   String?                       @db.Uuid
+  pbx_device_profile_keys     pbx_device_profile_keys[]
+  pbx_device_profile_settings pbx_device_profile_settings[]
+  pbx_domains                 pbx_domains?                  @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_profiles_domain_id_id_4067cb40_fk_pbx_domains_id")
+  pbx_device_vendors          pbx_device_vendors?           @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_profiles_vendor_id_95ae1fd9_fk_pbx_device_vendors_id")
+  pbx_devices                 pbx_devices[]
+
+  @@index([domain_id_id], map: "pbx_device_profiles_domain_id_id_4067cb40")
+  @@index([vendor_id], map: "pbx_device_profiles_vendor_id_95ae1fd9")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_settings {
+  id           String      @id @db.Uuid
+  name         String      @db.VarChar(64)
+  value        String?     @db.VarChar(254)
+  enabled      String      @db.VarChar(8)
+  description  String?     @db.VarChar(254)
+  created      DateTime?   @db.Timestamptz(6)
+  updated      DateTime?   @db.Timestamptz(6)
+  synchronised DateTime?   @db.Timestamptz(6)
+  updated_by   String      @db.VarChar(64)
+  device_id    String      @db.Uuid
+  pbx_devices  pbx_devices @relation(fields: [device_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_settings_device_id_12903bad_fk_pbx_devices_id")
+
+  @@index([device_id], map: "pbx_device_settings_device_id_12903bad")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_vendor_function_groups {
+  id                          String                      @id @db.Uuid
+  created                     DateTime?                   @db.Timestamptz(6)
+  updated                     DateTime?                   @db.Timestamptz(6)
+  synchronised                DateTime?                   @db.Timestamptz(6)
+  updated_by                  String                      @db.VarChar(64)
+  function_id                 String                      @db.Uuid
+  group_id                    Int
+  pbx_device_vendor_functions pbx_device_vendor_functions @relation(fields: [function_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_vendor_fu_function_id_ea1e5a9b_fk_pbx_devic")
+  auth_group                  auth_group                  @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_vendor_fu_group_id_67a203de_fk_auth_grou")
+
+  @@index([function_id], map: "pbx_device_vendor_function_groups_function_id_ea1e5a9b")
+  @@index([group_id], map: "pbx_device_vendor_function_groups_group_id_67a203de")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_device_vendor_functions {
+  id                                String                              @id @db.Uuid
+  name                              String                              @db.VarChar(64)
+  value                             String?                             @db.VarChar(254)
+  enabled                           String                              @db.VarChar(8)
+  description                       String?                             @db.VarChar(254)
+  created                           DateTime?                           @db.Timestamptz(6)
+  updated                           DateTime?                           @db.Timestamptz(6)
+  synchronised                      DateTime?                           @db.Timestamptz(6)
+  updated_by                        String                              @db.VarChar(64)
+  vendor_id                         String                              @db.Uuid
+  pbx_device_vendor_function_groups pbx_device_vendor_function_groups[]
+  pbx_device_vendors                pbx_device_vendors                  @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_device_vendor_fu_vendor_id_949d5c05_fk_pbx_devic")
+
+  @@index([vendor_id], map: "pbx_device_vendor_functions_vendor_id_949d5c05")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_device_vendors {
+  id                          String                        @id @db.Uuid
+  name                        String                        @db.VarChar(64)
+  enabled                     String                        @db.VarChar(8)
+  description                 String?                       @db.VarChar(254)
+  created                     DateTime?                     @db.Timestamptz(6)
+  updated                     DateTime?                     @db.Timestamptz(6)
+  synchronised                DateTime?                     @db.Timestamptz(6)
+  updated_by                  String                        @db.VarChar(64)
+  pbx_device_profiles         pbx_device_profiles[]
+  pbx_device_vendor_functions pbx_device_vendor_functions[]
+  pbx_devices                 pbx_devices[]
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_devices {
+  id                  String                @id @db.Uuid
+  mac_address         String                @db.VarChar(24)
+  label               String?               @db.VarChar(64)
+  model               String?               @db.VarChar(64)
+  firmware_version    String?               @db.VarChar(64)
+  template            String?               @db.VarChar(254)
+  username            String?               @db.VarChar(32)
+  password            String?               @db.VarChar(32)
+  provisioned_date    DateTime?             @db.Timestamptz(6)
+  provisioned_method  String?               @db.VarChar(16)
+  enabled             String                @db.VarChar(8)
+  description         String?               @db.VarChar(254)
+  provisioned_ip      String?               @db.Inet
+  created             DateTime?             @db.Timestamptz(6)
+  updated             DateTime?             @db.Timestamptz(6)
+  synchronised        DateTime?             @db.Timestamptz(6)
+  updated_by          String                @db.VarChar(64)
+  domain_id_id        String?               @db.Uuid
+  profile_id_id       String?               @db.Uuid
+  user_id_id          BigInt?
+  vendor_id           String?               @db.Uuid
+  alternate_id        String?               @db.Uuid
+  pbx_device_keys     pbx_device_keys[]
+  pbx_device_lines    pbx_device_lines[]
+  pbx_device_settings pbx_device_settings[]
+  pbx_domains         pbx_domains?          @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_devices_domain_id_id_10d0954a_fk_pbx_domains_id")
+  pbx_device_profiles pbx_device_profiles?  @relation(fields: [profile_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_devices_profile_id_id_d05f3c63_fk_pbx_device_profiles_id")
+  pbx_users           pbx_users?            @relation(fields: [user_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_devices_user_id_id_bd7443ea_fk_pbx_users_id")
+  pbx_device_vendors  pbx_device_vendors?   @relation(fields: [vendor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_devices_vendor_id_63e85b1c_fk_pbx_device_vendors_id")
+
+  @@index([domain_id_id], map: "pbx_devices_domain_id_id_10d0954a")
+  @@index([profile_id_id], map: "pbx_devices_profile_id_id_d05f3c63")
+  @@index([user_id_id], map: "pbx_devices_user_id_id_bd7443ea")
+  @@index([vendor_id], map: "pbx_devices_vendor_id_63e85b1c")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_dialplan_details {
+  id             String        @id @db.Uuid
+  tag            String        @db.VarChar(32)
+  type           String?       @db.VarChar(128)
+  data           String?       @db.VarChar(512)
+  dp_break       String?       @db.VarChar(8)
+  inline         String?       @db.VarChar(8)
+  group          Decimal       @db.Decimal(11, 0)
+  sequence       Decimal       @db.Decimal(11, 0)
+  created        DateTime?     @db.Timestamptz(6)
+  updated        DateTime?     @db.Timestamptz(6)
+  synchronised   DateTime?     @db.Timestamptz(6)
+  updated_by     String        @db.VarChar(64)
+  dialplan_id_id String        @db.Uuid
+  enabled        String        @db.VarChar(8)
+  pbx_dialplans  pbx_dialplans @relation(fields: [dialplan_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_dialplan_details_dialplan_id_id_eb4dbc17_fk_pbx_dialp")
+
+  @@index([dialplan_id_id], map: "pbx_dialplan_details_dialplan_id_id_eb4dbc17")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_dialplan_excludes {
+  id           String       @id @db.Uuid
+  domain_name  String       @db.VarChar(128)
+  name         String?      @db.VarChar(64)
+  app_id       String       @db.Uuid
+  created      DateTime?    @db.Timestamptz(6)
+  updated      DateTime?    @db.Timestamptz(6)
+  synchronised DateTime?    @db.Timestamptz(6)
+  updated_by   String       @db.VarChar(64)
+  domain_id_id String?      @db.Uuid
+  pbx_domains  pbx_domains? @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_dialplan_excludes_domain_id_id_4ad02574_fk_pbx_domains_id")
+
+  @@index([domain_id_id], map: "pbx_dialplan_excludes_domain_id_id_4ad02574")
+  @@index([domain_name], map: "pbx_dialplan_excludes_domain_name_06789052")
+  @@index([domain_name], map: "pbx_dialplan_excludes_domain_name_06789052_like")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_dialplans {
+  id                   String                 @id @db.Uuid
+  app_id               String?                @db.Uuid
+  hostname             String?                @db.VarChar(128)
+  context              String?                @db.VarChar(128)
+  category             String?                @db.VarChar(32)
+  name                 String?                @db.VarChar(64)
+  number               String?                @db.VarChar(128)
+  destination          String                 @db.VarChar(8)
+  dp_continue          String                 @db.VarChar(8)
+  xml                  String?
+  sequence             Decimal                @db.Decimal(3, 0)
+  enabled              String                 @db.VarChar(8)
+  description          String?                @db.VarChar(254)
+  created              DateTime?              @db.Timestamptz(6)
+  updated              DateTime?              @db.Timestamptz(6)
+  synchronised         DateTime?              @db.Timestamptz(6)
+  updated_by           String                 @db.VarChar(64)
+  domain_id_id         String?                @db.Uuid
+  pbx_dialplan_details pbx_dialplan_details[]
+  pbx_domains          pbx_domains?           @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_dialplans_domain_id_id_581e14be_fk_pbx_domains_id")
+
+  @@index([category], map: "pbx_dialplans_category_62ff80d9")
+  @@index([category], map: "pbx_dialplans_category_62ff80d9_like")
+  @@index([context], map: "pbx_dialplans_context_9f65b37d")
+  @@index([context], map: "pbx_dialplans_context_9f65b37d_like")
+  @@index([destination], map: "pbx_dialplans_destination_bb1c9803")
+  @@index([destination], map: "pbx_dialplans_destination_bb1c9803_like")
+  @@index([domain_id_id], map: "pbx_dialplans_domain_id_id_581e14be")
+  @@index([hostname], map: "pbx_dialplans_hostname_0e8300e2")
+  @@index([hostname], map: "pbx_dialplans_hostname_0e8300e2_like")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_domain_settings {
+  id           String      @id @db.Uuid
+  app_uuid     String?     @db.Uuid
+  category     String      @db.VarChar(32)
+  subcategory  String      @db.VarChar(64)
+  value_type   String      @db.VarChar(32)
+  value        String?     @db.VarChar(254)
+  sequence     Decimal     @db.Decimal(11, 0)
+  disabled     Boolean     @default(false)
+  description  String?     @db.VarChar(128)
+  created      DateTime?   @db.Timestamptz(6)
+  updated      DateTime?   @db.Timestamptz(6)
+  synchronised DateTime?   @db.Timestamptz(6)
+  updated_by   String      @db.VarChar(64)
+  domainId     String      @db.Uuid
+  pbx_domains  pbx_domains @relation("DomainSettingsRelation", fields: [domainId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_domain_settings_domain_id_id_c7461c47_fk_pbx_domains_id")
+
+  @@index([category], map: "pbx_domain_settings_category_b8b72e31")
+  @@index([category], map: "pbx_domain_settings_category_b8b72e31_like")
+  @@index([domainId])
+  @@index([subcategory], map: "pbx_domain_settings_subcategory_db5affbb")
+  @@index([subcategory], map: "pbx_domain_settings_subcategory_db5affbb_like")
+  @@index([value_type], map: "pbx_domain_settings_value_type_41f42703")
+  @@index([value_type], map: "pbx_domain_settings_value_type_41f42703_like")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_domains {
+  id                     String                   @id @db.Uuid
+  name                   String                   @unique @db.VarChar(128)
+  disabled               Boolean                  @default(false)
+  description            String?                  @db.VarChar(128)
+  created                DateTime?                @db.Timestamptz(6)
+  updated                DateTime?                @db.Timestamptz(6)
+  synchronised           DateTime?                @db.Timestamptz(6)
+  updatedBy              String                   @db.VarChar(64)
+  homeSwitch             String?                  @db.VarChar(128)
+  menuId                 String?                  @db.Uuid
+  portalName             String?                  @unique @db.VarChar(128)
+  tenantId               String                   @db.VarChar(50)
+  tenant                 auth_tenant              @relation(fields: [tenantId], references: [id])
+  pbx_auto_report        pbx_auto_report[]
+  pbx_bridges            pbx_bridges[]
+  pbx_call_block         pbx_call_block[]
+  pbx_call_centre_agents pbx_call_centre_agents[]
+  pbx_call_centre_queues pbx_call_centre_queues[]
+  pbx_call_flows         pbx_call_flows[]
+  pbx_call_recordings    pbx_call_recordings[]
+  pbx_call_timeline      pbx_call_timeline[]
+  pbx_conference_centres pbx_conference_centres[]
+  pbx_contacts           pbx_contacts[]
+  pbx_device_profiles    pbx_device_profiles[]
+  pbx_devices            pbx_devices[]
+  pbx_dialplan_excludes  pbx_dialplan_excludes[]
+  pbx_dialplans          pbx_dialplans[]
+  domain_settings        pbx_domain_settings[]    @relation("DomainSettingsRelation")
+  pbx_menus              pbx_menus?               @relation(fields: [menuId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_domains_menu_id_id_e5f9f32c_fk_pbx_menus_id")
+  pbx_email_templates    pbx_email_templates[]
+  pbx_extensions         pbx_extensions[]
+  pbx_gateways           pbx_gateways[]
+  pbx_ivr_menus          pbx_ivr_menus[]
+  pbx_music_on_hold      pbx_music_on_hold[]
+  pbx_phrases            pbx_phrases[]
+  pbx_recordings         pbx_recordings[]
+  pbx_ring_groups        pbx_ring_groups[]
+  pbx_users              pbx_users[]
+  pbx_xml_cdr            pbx_xml_cdr[]
+
+  @@index([menuId])
+  @@index([name])
+  @@index([portalName])
+  @@index([tenantId])
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_email_templates {
+  id           String       @id @db.Uuid
+  language     String       @db.VarChar(8)
+  category     String       @db.VarChar(32)
+  subcategory  String       @db.VarChar(32)
+  subject      String?      @db.VarChar(128)
+  type         String       @db.VarChar(8)
+  body         String?
+  enabled      String       @db.VarChar(8)
+  description  String?      @db.VarChar(254)
+  created      DateTime?    @db.Timestamptz(6)
+  updated      DateTime?    @db.Timestamptz(6)
+  synchronised DateTime?    @db.Timestamptz(6)
+  updatedBy    String       @db.VarChar(64)
+  domain_id_id String?      @db.Uuid
+  pbx_domains  pbx_domains? @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_email_templates_domain_id_id_592ee910_fk_pbx_domains_id")
+
+  @@index([domain_id_id], map: "pbx_email_templates_domain_id_id_592ee910")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_extension_users {
+  id             String          @id @db.Uuid
+  created        DateTime?       @db.Timestamptz(6)
+  updated        DateTime?       @db.Timestamptz(6)
+  synchronised   DateTime?       @db.Timestamptz(6)
+  updated_by     String          @db.VarChar(64)
+  extension_uuid String?         @db.Uuid
+  user_uuid      String?         @db.Uuid
+  default_user   String          @db.VarChar(8)
+  pbx_extensions pbx_extensions? @relation(fields: [extension_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_extension_users_extension_uuid_68cf4da0_fk_pbx_exten")
+  pbx_users      pbx_users?      @relation(fields: [user_uuid], references: [user_uuid], onDelete: NoAction, onUpdate: NoAction, map: "pbx_extension_users_user_uuid_c416d33e_fk_pbx_users_user_uuid")
+
+  @@index([extension_uuid], map: "pbx_extension_users_extension_uuid_68cf4da0")
+  @@index([user_uuid], map: "pbx_extension_users_user_uuid_c416d33e")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_extensions {
+  id                                      String                       @id @db.Uuid
+  extension                               String                       @db.VarChar(32)
+  number_alias                            String?                      @db.VarChar(16)
+  password                                String                       @db.VarChar(32)
+  accountcode                             String?                      @db.VarChar(32)
+  effective_caller_id_name                String?                      @db.VarChar(32)
+  effective_caller_id_number              String?                      @db.VarChar(16)
+  outbound_caller_id_name                 String?                      @db.VarChar(32)
+  outbound_caller_id_number               String?                      @db.VarChar(16)
+  emergency_caller_id_name                String?                      @db.VarChar(32)
+  emergency_caller_id_number              String?                      @db.VarChar(16)
+  directory_first_name                    String?                      @db.VarChar(32)
+  directory_last_name                     String?                      @db.VarChar(32)
+  directory_visible                       String                       @db.VarChar(8)
+  directory_exten_visible                 String                       @db.VarChar(8)
+  limit_max                               Decimal?                     @db.Decimal(11, 0)
+  limit_destination                       String?                      @db.VarChar(32)
+  missed_call_app                         String?                      @db.VarChar(32)
+  missed_call_data                        String?                      @db.VarChar(256)
+  user_context                            String?                      @db.VarChar(128)
+  toll_allow                              String?                      @db.VarChar(32)
+  call_timeout                            Decimal?                     @db.Decimal(11, 0)
+  call_group                              String?                      @db.VarChar(32)
+  call_screen_enabled                     String                       @db.VarChar(8)
+  user_record                             String?                      @db.VarChar(8)
+  hold_music                              String?                      @db.VarChar(64)
+  auth_acl                                String?                      @db.VarChar(16)
+  cidr                                    String?                      @db.VarChar(128)
+  sip_force_contact                       String?                      @db.VarChar(64)
+  nibble_account                          Decimal?                     @db.Decimal(1, 0)
+  sip_force_expires                       Decimal?                     @db.Decimal(11, 0)
+  mwi_account                             String?                      @db.VarChar(256)
+  sip_bypass_media                        String?                      @db.VarChar(32)
+  unique_id                               Decimal?                     @db.Decimal(1, 0)
+  dial_string                             String?
+  dial_user                               String?                      @db.VarChar(32)
+  dial_domain                             String?                      @db.VarChar(128)
+  do_not_disturb                          String                       @db.VarChar(8)
+  forward_all_destination                 String?                      @db.VarChar(16)
+  forward_all_enabled                     String                       @db.VarChar(8)
+  forward_busy_destination                String?                      @db.VarChar(16)
+  forward_busy_enabled                    String                       @db.VarChar(8)
+  forward_no_answer_destination           String?                      @db.VarChar(16)
+  forward_no_answer_enabled               String                       @db.VarChar(8)
+  forward_user_not_registered_destination String?                      @db.VarChar(16)
+  forward_user_not_registered_enabled     String                       @db.VarChar(8)
+  follow_me_uuid                          String?                      @db.Uuid
+  forward_caller_id                       String?                      @db.VarChar(16)
+  follow_me_enabled                       String                       @db.VarChar(8)
+  follow_me_destinations                  String?
+  disabled                                Boolean                      @default(false)
+  description                             String?                      @db.VarChar(64)
+  absolute_codec_string                   String?                      @db.VarChar(64)
+  force_ping                              String                       @db.VarChar(8)
+  created                                 DateTime?                    @db.Timestamptz(6)
+  updated                                 DateTime?                    @db.Timestamptz(6)
+  synchronised                            DateTime?                    @db.Timestamptz(6)
+  updated_by                              String                       @db.VarChar(64)
+  domain_uuid                             String?                      @db.Uuid
+  pbx_extension_users                     pbx_extension_users[]
+  pbx_domains                             pbx_domains?                 @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_extensions_domain_uuid_246c1b36_fk_pbx_domains_id")
+  pbx_follow_me_destinations              pbx_follow_me_destinations[]
+  pbx_voicemails                          pbx_voicemails[]
+  pbx_xml_cdr                             pbx_xml_cdr[]
+
+  @@unique([domain_uuid, extension], map: "pbx_extensions_domain_uuid_extension_8ef2eb2b_uniq")
+  @@unique([domain_uuid, number_alias], map: "pbx_extensions_domain_uuid_number_alias_64dbcbb9_uniq")
+  @@index([domain_uuid], map: "pbx_extensions_domain_uuid_246c1b36")
+  @@index([extension], map: "pbx_extensions_extension_8d76e869")
+  @@index([extension], map: "pbx_extensions_extension_8d76e869_like")
+  @@index([number_alias], map: "pbx_extensions_number_alias_9f983a90")
+  @@index([number_alias], map: "pbx_extensions_number_alias_9f983a90_like")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_failed_logins {
+  id           String    @id @db.Uuid
+  address      String    @unique @db.Inet
+  username     String?   @db.VarChar(254)
+  attempts     Decimal   @db.Decimal(4, 0)
+  created      DateTime? @db.Timestamptz(6)
+  updated      DateTime? @db.Timestamptz(6)
+  synchronised DateTime? @db.Timestamptz(6)
+  updated_by   String    @db.VarChar(64)
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_follow_me_destinations {
+  id             String          @id @db.Uuid
+  destination    String          @db.VarChar(32)
+  delay          Decimal         @db.Decimal(3, 0)
+  timeout        Decimal         @db.Decimal(3, 0)
+  prompt         String?         @db.VarChar(8)
+  sequence       Decimal?        @db.Decimal(11, 0)
+  created        DateTime?       @db.Timestamptz(6)
+  updated        DateTime?       @db.Timestamptz(6)
+  synchronised   DateTime?       @db.Timestamptz(6)
+  updated_by     String          @db.VarChar(64)
+  extension_uuid String?         @db.Uuid
+  pbx_extensions pbx_extensions? @relation(fields: [extension_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_follow_me_destin_extension_uuid_7a65cb1a_fk_pbx_exten")
+
+  @@index([extension_uuid], map: "pbx_follow_me_destinations_extension_uuid_7a65cb1a")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_gateways {
+  id                   String       @id @db.Uuid
+  gateway              String       @db.VarChar(64)
+  username             String?      @db.VarChar(64)
+  password             String?      @db.VarChar(64)
+  distinct_to          String?      @db.VarChar(8)
+  auth_username        String?      @db.VarChar(64)
+  realm                String?      @db.VarChar(128)
+  from_user            String?      @db.VarChar(64)
+  from_domain          String?      @db.VarChar(128)
+  proxy                String       @db.VarChar(128)
+  register_proxy       String?      @db.VarChar(128)
+  outbound_proxy       String?      @db.VarChar(128)
+  expire_seconds       Decimal      @db.Decimal(5, 0)
+  register             String       @db.VarChar(8)
+  register_transport   String?      @db.VarChar(8)
+  retry_seconds        Decimal      @db.Decimal(4, 0)
+  extension            String?      @db.VarChar(64)
+  ping                 String?      @db.VarChar(8)
+  caller_id_in_from    String?      @db.VarChar(8)
+  supress_cng          String?      @db.VarChar(8)
+  sip_cid_type         String?      @db.VarChar(8)
+  codec_prefs          String?      @db.VarChar(64)
+  channels             Decimal      @db.Decimal(4, 0)
+  extension_in_contact String?      @db.VarChar(8)
+  context              String       @db.VarChar(128)
+  profile              String       @db.VarChar(64)
+  hostname             String?      @db.VarChar(128)
+  enabled              String       @db.VarChar(8)
+  description          String?      @db.VarChar(64)
+  created              DateTime?    @db.Timestamptz(6)
+  updated              DateTime?    @db.Timestamptz(6)
+  synchronised         DateTime?    @db.Timestamptz(6)
+  updated_by           String       @db.VarChar(64)
+  domain_uuid          String?      @db.Uuid
+  pbx_domains          pbx_domains? @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_gateways_domain_uuid_08cbf6c7_fk_pbx_domains_id")
+
+  @@index([domain_uuid], map: "pbx_gateways_domain_uuid_08cbf6c7")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_httapi_session {
+  id      String    @id @db.Uuid
+  name    String    @db.VarChar(32)
+  xml     String?
+  json    Json?
+  created DateTime? @db.Timestamptz(6)
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_ip_register {
+  id           String    @id @db.Uuid
+  address      String    @unique @db.Inet
+  status       Decimal   @db.Decimal(2, 0)
+  created      DateTime? @db.Timestamptz(6)
+  updated      DateTime? @db.Timestamptz(6)
+  synchronised DateTime? @db.Timestamptz(6)
+  updated_by   String    @db.VarChar(64)
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_ivr_menu_options {
+  id             String        @id @db.Uuid
+  option_digits  String?       @db.VarChar(8)
+  option_action  String?       @db.VarChar(64)
+  option_param   String        @db.VarChar(128)
+  sequence       Decimal       @db.Decimal(3, 0)
+  description    String?       @db.VarChar(64)
+  created        DateTime?     @db.Timestamptz(6)
+  updated        DateTime?     @db.Timestamptz(6)
+  synchronised   DateTime?     @db.Timestamptz(6)
+  updated_by     String        @db.VarChar(64)
+  ivr_menu_id_id String        @db.Uuid
+  pbx_ivr_menus  pbx_ivr_menus @relation(fields: [ivr_menu_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_ivr_menu_options_ivr_menu_id_id_596a92af_fk_pbx_ivr_m")
+
+  @@index([ivr_menu_id_id], map: "pbx_ivr_menu_options_ivr_menu_id_id_596a92af")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_ivr_menus {
+  id                   String                 @id @db.Uuid
+  dialplan_id          String?                @db.Uuid
+  name                 String?                @db.VarChar(64)
+  extension            String                 @db.VarChar(32)
+  language             String?                @db.VarChar(32)
+  greet_long           String?                @db.VarChar(254)
+  greet_short          String?                @db.VarChar(254)
+  invalid_sound        String?                @db.VarChar(254)
+  exit_sound           String?                @db.VarChar(254)
+  confirm_macro        String?                @db.VarChar(254)
+  confirm_key          String?                @db.VarChar(8)
+  tts_engine           String?                @db.VarChar(64)
+  tts_voice            String?                @db.VarChar(254)
+  confirm_attempts     Decimal                @db.Decimal(2, 0)
+  timeout              Decimal                @db.Decimal(5, 0)
+  exit_app             String?                @db.VarChar(32)
+  exit_data            String?                @db.VarChar(256)
+  inter_digit_timeout  Decimal                @db.Decimal(5, 0)
+  max_failiures        Decimal                @db.Decimal(2, 0)
+  max_timeouts         Decimal                @db.Decimal(2, 0)
+  digit_len            Decimal                @db.Decimal(2, 0)
+  direct_dial          String                 @db.VarChar(8)
+  ringback             String?                @db.VarChar(128)
+  cid_prefix           String?                @db.VarChar(32)
+  context              String?                @db.VarChar(128)
+  enabled              String                 @db.VarChar(8)
+  description          String?                @db.VarChar(64)
+  created              DateTime?              @db.Timestamptz(6)
+  updated              DateTime?              @db.Timestamptz(6)
+  synchronised         DateTime?              @db.Timestamptz(6)
+  updated_by           String                 @db.VarChar(64)
+  domain_uuid          String?                @db.Uuid
+  pbx_ivr_menu_options pbx_ivr_menu_options[]
+  pbx_domains          pbx_domains?           @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_ivr_menus_domain_uuid_82c2bc95_fk_pbx_domains_id")
+
+  @@index([context], map: "pbx_ivr_menus_context_23574173")
+  @@index([context], map: "pbx_ivr_menus_context_23574173_like")
+  @@index([domain_uuid], map: "pbx_ivr_menus_domain_uuid_82c2bc95")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_menu_item_groups {
+  id             String         @id @db.Uuid
+  name           String?        @db.VarChar(64)
+  created        DateTime?      @db.Timestamptz(6)
+  updated        DateTime?      @db.Timestamptz(6)
+  synchronised   DateTime?      @db.Timestamptz(6)
+  updated_by     String         @db.VarChar(64)
+  group_id       Int
+  menu_item_id   String         @db.Uuid
+  auth_group     auth_group     @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_menu_item_groups_group_id_727cd142_fk_auth_group_id")
+  pbx_menu_items pbx_menu_items @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_menu_item_groups_menu_item_id_c543d3d6_fk_pbx_menu_items_id")
+
+  @@index([group_id], map: "pbx_menu_item_groups_group_id_727cd142")
+  @@index([menu_item_id], map: "pbx_menu_item_groups_menu_item_id_c543d3d6")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_menu_items {
+  id                   String                 @id @db.Uuid
+  title                String                 @db.VarChar(64)
+  link                 String?                @db.VarChar(128)
+  icon                 String?                @db.VarChar(32)
+  category             String                 @db.VarChar(16)
+  protected            String                 @db.VarChar(8)
+  sequence             Decimal                @db.Decimal(11, 0)
+  description          String                 @db.VarChar(128)
+  created              DateTime?              @db.Timestamptz(6)
+  updated              DateTime?              @db.Timestamptz(6)
+  synchronised         DateTime?              @db.Timestamptz(6)
+  updated_by           String                 @db.VarChar(64)
+  menu_id              String                 @db.Uuid
+  parent_id            String?                @db.Uuid
+  pbx_menu_item_groups pbx_menu_item_groups[]
+  pbx_menus            pbx_menus              @relation(fields: [menu_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_menu_items_menu_id_a8e4817b_fk_pbx_menus_id")
+  pbx_menu_items       pbx_menu_items?        @relation("pbx_menu_itemsTopbx_menu_items", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_menu_items_parent_id_c68849bb_fk_pbx_menu_items_id")
+  other_pbx_menu_items pbx_menu_items[]       @relation("pbx_menu_itemsTopbx_menu_items")
+
+  @@index([menu_id], map: "pbx_menu_items_menu_id_a8e4817b")
+  @@index([parent_id], map: "pbx_menu_items_parent_id_c68849bb")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_menus {
+  id          String        @id @db.Uuid
+  name        String        @db.VarChar(64)
+  description String        @db.VarChar(128)
+  created     DateTime?     @db.Timestamptz(6)
+  updated     DateTime?     @db.Timestamptz(6)
+  synchronised DateTime?    @db.Timestamptz(6)
+  updated_by  String        @db.VarChar(64)
+  pbx_domains pbx_domains[]
+  pbx_menu_items pbx_menu_items[]
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_modules {
+  id              String    @id @db.Uuid
+  label           String    @db.VarChar(64)
+  name            String    @db.VarChar(64)
+  category        String    @db.VarChar(64)
+  sequence        Decimal   @db.Decimal(11, 0)
+  enabled         String    @db.VarChar(8)
+  default_enabled String    @db.VarChar(8)
+  description     String?   @db.VarChar(254)
+  created         DateTime? @db.Timestamptz(6)
+  updated         DateTime? @db.Timestamptz(6)
+  synchronised    DateTime? @db.Timestamptz(6)
+  updated_by      String    @db.VarChar(64)
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_music_on_hold {
+  id                      String                    @id @db.Uuid
+  name                    String                    @db.VarChar(32)
+  path                    String                    @db.VarChar(256)
+  rate                    Decimal                   @db.Decimal(11, 0)
+  shuffle                 String                    @db.VarChar(8)
+  channels                Decimal?                  @db.Decimal(11, 0)
+  interval                Decimal?                  @db.Decimal(11, 0)
+  timer_name              String                    @db.VarChar(32)
+  chime_list              String?                   @db.VarChar(64)
+  chime_freq              Decimal?                  @db.Decimal(11, 0)
+  chime_max               Decimal?                  @db.Decimal(11, 0)
+  created                 DateTime?                 @db.Timestamptz(6)
+  updated                 DateTime?                 @db.Timestamptz(6)
+  synchronised            DateTime?                 @db.Timestamptz(6)
+  updated_by              String                    @db.VarChar(64)
+  domain_uuid             String?                   @db.Uuid
+  pbx_domains             pbx_domains?              @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_music_on_hold_domain_uuid_f5d415b6_fk_pbx_domains_id")
+  pbx_music_on_hold_files pbx_music_on_hold_files[]
+
+  @@index([domain_uuid], map: "pbx_music_on_hold_domain_uuid_f5d415b6")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_music_on_hold_files {
+  id                String            @id @db.Uuid
+  filename          String
+  file_name         String            @db.VarChar(256)
+  created           DateTime?         @db.Timestamptz(6)
+  updated           DateTime?         @db.Timestamptz(6)
+  synchronised      DateTime?         @db.Timestamptz(6)
+  updated_by        String            @db.VarChar(64)
+  moh_id_id         String            @db.Uuid
+  filestore         String            @db.VarChar(128)
+  pbx_music_on_hold pbx_music_on_hold @relation(fields: [moh_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_music_on_hold_fi_moh_id_id_2ed7958f_fk_pbx_music")
+
+  @@index([moh_id_id], map: "pbx_music_on_hold_files_moh_id_id_2ed7958f")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_number_translation_details {
+  id                       String                  @id @db.Uuid
+  td_regex                 String?                 @db.VarChar(128)
+  td_replace               String?                 @db.VarChar(128)
+  td_order                 Decimal                 @db.Decimal(3, 0)
+  created                  DateTime?               @db.Timestamptz(6)
+  updated                  DateTime?               @db.Timestamptz(6)
+  synchronised             DateTime?               @db.Timestamptz(6)
+  updated_by               String                  @db.VarChar(64)
+  number_translation_id_id String                  @db.Uuid
+  pbx_number_translations  pbx_number_translations @relation(fields: [number_translation_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_number_translati_number_translation_i_c92ec084_fk_pbx_numbe")
+
+  @@index([number_translation_id_id], map: "pbx_number_translation_det_number_translation_id_id_c92ec084")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_number_translations {
+  id                             String                           @id @db.Uuid
+  name                           String?                          @db.VarChar(64)
+  enabled                        String                           @db.VarChar(8)
+  description                    String?                          @db.VarChar(64)
+  created                        DateTime?                        @db.Timestamptz(6)
+  updated                        DateTime?                        @db.Timestamptz(6)
+  synchronised                   DateTime?                        @db.Timestamptz(6)
+  updated_by                     String                           @db.VarChar(64)
+  pbx_number_translation_details pbx_number_translation_details[]
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_phrase_details {
+  id           String      @id @db.Uuid
+  pfunction    String      @db.VarChar(16)
+  data         String?     @db.VarChar(254)
+  sequence     Decimal     @db.Decimal(11, 0)
+  created      DateTime?   @db.Timestamptz(6)
+  updated      DateTime?   @db.Timestamptz(6)
+  synchronised DateTime?   @db.Timestamptz(6)
+  updated_by   String      @db.VarChar(64)
+  phrase_id_id String      @db.Uuid
+  pbx_phrases  pbx_phrases @relation(fields: [phrase_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_phrase_details_phrase_id_id_b0a5c23d_fk_pbx_phrases_id")
+
+  @@index([phrase_id_id], map: "pbx_phrase_details_phrase_id_id_b0a5c23d")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_phrases {
+  id                 String               @id @db.Uuid
+  name               String?              @db.VarChar(64)
+  language           String               @db.VarChar(8)
+  enabled            String               @db.VarChar(8)
+  description        String?              @db.VarChar(64)
+  created            DateTime?            @db.Timestamptz(6)
+  updated            DateTime?            @db.Timestamptz(6)
+  synchronised       DateTime?            @db.Timestamptz(6)
+  updated_by         String               @db.VarChar(64)
+  domain_uuid        String?              @db.Uuid
+  pbx_phrase_details pbx_phrase_details[]
+  pbx_domains        pbx_domains?         @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_phrases_domain_uuid_3e4927b6_fk_pbx_domains_id")
+
+  @@index([domain_uuid], map: "pbx_phrases_domain_uuid_3e4927b6")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_recordings {
+  id           String       @id @db.Uuid
+  filename     String
+  name         String       @db.VarChar(64)
+  description  String?      @db.VarChar(128)
+  base64       String?
+  created      DateTime?    @db.Timestamptz(6)
+  updated      DateTime?    @db.Timestamptz(6)
+  synchronised DateTime?    @db.Timestamptz(6)
+  updated_by   String       @db.VarChar(64)
+  domain_uuid  String?      @db.Uuid
+  filestore    String       @db.VarChar(128)
+  pbx_domains  pbx_domains? @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_recordings_domain_uuid_e92a4731_fk_pbx_domains_id")
+
+  @@index([domain_uuid], map: "pbx_recordings_domain_uuid_e92a4731")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_ring_group_destinations {
+  id                 String          @id @db.Uuid
+  number             String          @db.VarChar(128)
+  delay              Decimal         @db.Decimal(3, 0)
+  timeout            Decimal         @db.Decimal(3, 0)
+  destination_prompt Decimal         @db.Decimal(3, 0)
+  created            DateTime?       @db.Timestamptz(6)
+  updated            DateTime?       @db.Timestamptz(6)
+  synchronised       DateTime?       @db.Timestamptz(6)
+  updated_by         String          @db.VarChar(64)
+  ring_group_id_id   String          @db.Uuid
+  pbx_ring_groups    pbx_ring_groups @relation(fields: [ring_group_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_ring_group_desti_ring_group_id_id_b1dd9e79_fk_pbx_ring_")
+
+  @@index([ring_group_id_id], map: "pbx_ring_group_destinations_ring_group_id_id_b1dd9e79")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_ring_group_users {
+  id               String          @id @db.Uuid
+  created          DateTime?       @db.Timestamptz(6)
+  updated          DateTime?       @db.Timestamptz(6)
+  synchronised     DateTime?       @db.Timestamptz(6)
+  updated_by       String          @db.VarChar(64)
+  ring_group_id_id String          @db.Uuid
+  user_uuid        String?         @db.Uuid
+  pbx_ring_groups  pbx_ring_groups @relation(fields: [ring_group_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_ring_group_users_ring_group_id_id_f248dec4_fk_pbx_ring_")
+  pbx_users        pbx_users?      @relation(fields: [user_uuid], references: [user_uuid], onDelete: NoAction, onUpdate: NoAction, map: "pbx_ring_group_users_user_uuid_78082a94_fk_pbx_users_user_uuid")
+
+  @@index([ring_group_id_id], map: "pbx_ring_group_users_ring_group_id_id_f248dec4")
+  @@index([user_uuid], map: "pbx_ring_group_users_user_uuid_78082a94")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_ring_groups {
+  id                          String                        @id @db.Uuid
+  name                        String?                       @db.VarChar(64)
+  extension                   String                        @db.VarChar(32)
+  greeting                    String?                       @db.VarChar(254)
+  strategy                    String?                       @db.VarChar(16)
+  timeout_app                 String?                       @db.VarChar(32)
+  timeout_data                String?                       @db.VarChar(256)
+  call_timeout                Decimal                       @db.Decimal(3, 0)
+  caller_id_name              String?                       @db.VarChar(32)
+  caller_id_number            String?                       @db.VarChar(16)
+  cid_name_prefix             String?                       @db.VarChar(32)
+  cid_number_prefix           String?                       @db.VarChar(16)
+  distinctive_ring            String?                       @db.VarChar(32)
+  ring_group_ringback         String?                       @db.VarChar(128)
+  follow_me_enabled           String                        @db.VarChar(8)
+  missed_call_app             String?                       @db.VarChar(32)
+  missed_call_data            String?                       @db.VarChar(256)
+  forward_enabled             String                        @db.VarChar(8)
+  forward_destination         String?                       @db.VarChar(128)
+  forward_toll_allow          String?                       @db.VarChar(32)
+  context                     String?                       @db.VarChar(128)
+  enabled                     String                        @db.VarChar(8)
+  description                 String?                       @db.VarChar(64)
+  dialplan_id                 String?                       @db.Uuid
+  created                     DateTime?                     @db.Timestamptz(6)
+  updated                     DateTime?                     @db.Timestamptz(6)
+  synchronised                DateTime?                     @db.Timestamptz(6)
+  updated_by                  String                        @db.VarChar(64)
+  domain_uuid                 String?                       @db.Uuid
+  pbx_ring_group_destinations pbx_ring_group_destinations[]
+  pbx_ring_group_users        pbx_ring_group_users[]
+  pbx_domains                 pbx_domains?                  @relation(fields: [domain_uuid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_ring_groups_domain_uuid_8ee40c93_fk_pbx_domains_id")
+
+  @@index([context], map: "pbx_ring_groups_context_378e5e39")
+  @@index([context], map: "pbx_ring_groups_context_378e5e39_like")
+  @@index([domain_uuid], map: "pbx_ring_groups_domain_uuid_8ee40c93")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_sip_profile_domains {
+  id               String           @id @db.Uuid
+  name             String           @db.VarChar(128)
+  alias            String           @db.VarChar(8)
+  parse            String           @db.VarChar(8)
+  created          DateTime?        @db.Timestamptz(6)
+  updated          DateTime?        @db.Timestamptz(6)
+  synchronised     DateTime?        @db.Timestamptz(6)
+  updated_by       String           @db.VarChar(64)
+  sip_profile_id   String           @db.Uuid
+  pbx_sip_profiles pbx_sip_profiles @relation(fields: [sip_profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_sip_profile_doma_sip_profile_id_6a5cdae5_fk_pbx_sip_p")
+
+  @@index([sip_profile_id], map: "pbx_sip_profile_domains_sip_profile_id_6a5cdae5")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_sip_profile_settings {
+  id               String           @id @db.Uuid
+  name             String           @db.VarChar(64)
+  value            String?          @db.VarChar(254)
+  disabled         Boolean          
+  description      String?          @db.VarChar(254)
+  created          DateTime?        @db.Timestamptz(6)
+  updated          DateTime?        @db.Timestamptz(6)
+  synchronised     DateTime?        @db.Timestamptz(6)
+  updated_by       String           @db.VarChar(64)
+  sip_profile_id   String           @db.Uuid
+  pbx_sip_profiles pbx_sip_profiles @relation(fields: [sip_profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_sip_profile_sett_sip_profile_id_3d874090_fk_pbx_sip_p")
+
+  @@index([sip_profile_id], map: "pbx_sip_profile_settings_sip_profile_id_3d874090")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_sip_profiles {
+  id                       String                     @id @db.Uuid
+  name                     String                     @db.VarChar(64)
+  hostname                 String?                    @db.VarChar(128)
+  disabled                 Boolean                   
+  description              String?                    @db.VarChar(254)
+  created                  DateTime?                  @db.Timestamptz(6)
+  updated                  DateTime?                  @db.Timestamptz(6)
+  synchronised             DateTime?                  @db.Timestamptz(6)
+  updated_by               String                     @db.VarChar(64)
+  pbx_sip_profile_domains  pbx_sip_profile_domains[]
+  pbx_sip_profile_settings pbx_sip_profile_settings[]
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_user_settings {
+  id           String    @id @db.Uuid
+  category     String    @db.VarChar(32)
+  subcategory  String    @db.VarChar(64)
+  value_type   String    @db.VarChar(32)
+  value        String?   @db.VarChar(254)
+  sequence     Decimal   @db.Decimal(11, 0)
+  disabled     Boolean   
+  description  String?   @db.VarChar(128)
+  created      DateTime? @db.Timestamptz(6)
+  updated      DateTime? @db.Timestamptz(6)
+  synchronised DateTime? @db.Timestamptz(6)
+  updated_by   String    @db.VarChar(64)
+  pbx_user_id  BigInt    
+  pbx_user     pbx_users @relation(fields: [pbx_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([category])
+  @@index([subcategory])
+  @@index([pbx_user_id])
+  @@index([value_type])
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_users {
+  id                        BigInt                      @id @default(autoincrement())
+  user_uuid                 String                      @unique @db.Uuid
+  username                  String                      @unique @db.VarChar(150)
+  email                     String?                     @db.VarChar(254)
+  department                String?                     @db.VarChar(50)
+  status                    String                      @db.VarChar(32)
+  api_key                   String?                     @db.VarChar(254)
+  disabled                  Boolean                     @default(false)
+  created                   DateTime?                   @db.Timestamptz(6)
+  updated                   DateTime?                   @db.Timestamptz(6)
+  synchronised              DateTime?                   @db.Timestamptz(6)
+  updatedBy                 String                      @db.VarChar(64)
+  domainId                  String?                     @db.Uuid
+  auth_user_id              String                      @unique @db.VarChar(50)
+  pbx_call_centre_agents    pbx_call_centre_agents[]
+  pbx_conference_room_users pbx_conference_room_users[]
+  pbx_contacts              pbx_contacts[]
+  pbx_devices              pbx_devices[]
+  pbx_extension_users      pbx_extension_users[]
+  pbx_ring_group_users     pbx_ring_group_users[]
+  pbx_user_settings        pbx_user_settings[]
+  pbx_domains              pbx_domains?                @relation(fields: [domainId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  auth_user                auth_user                   @relation(fields: [auth_user_id], references: [uid], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([domainId])
+  @@index([username])
+
+  @@schema("vgtpbx_tenant")
+
+
+}
+
+model pbx_vars {
+  id           String    @id @db.Uuid
+  category     String    @db.VarChar(64)
+  name         String    @db.VarChar(64)
+  value        String?   @db.VarChar(254)
+  command      String?   @db.VarChar(16)
+  hostname     String?   @db.VarChar(128)
+  enabled      String    @db.VarChar(8)
+  sequence     Decimal   @db.Decimal(11, 0)
+  description  String?
+  created      DateTime? @db.Timestamptz(6)
+  updated      DateTime? @db.Timestamptz(6)
+  synchronised DateTime? @db.Timestamptz(6)
+  updated_by   String    @db.VarChar(64)
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_voicemail_destinations {
+  id              String         @id @db.Uuid
+  voicemail_dest  String?        @db.Uuid
+  created         DateTime?      @db.Timestamptz(6)
+  updated         DateTime?      @db.Timestamptz(6)
+  synchronised    DateTime?      @db.Timestamptz(6)
+  updated_by      String         @db.VarChar(64)
+  voicemail_id_id String         @db.Uuid
+  pbx_voicemails  pbx_voicemails @relation(fields: [voicemail_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_voicemail_destin_voicemail_id_id_31053e0d_fk_pbx_voice")
+
+  @@index([voicemail_id_id], map: "pbx_voicemail_destinations_voicemail_id_id_31053e0d")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_voicemail_greetings {
+  id              String          @id @db.Uuid
+  filename        String
+  name            String          @db.VarChar(64)
+  description     String?         @db.VarChar(128)
+  created         DateTime?       @db.Timestamptz(6)
+  updated         DateTime?       @db.Timestamptz(6)
+  synchronised    DateTime?       @db.Timestamptz(6)
+  updated_by      String          @db.VarChar(64)
+  voicemail_id_id String?         @db.Uuid
+  filestore       String          @db.VarChar(128)
+  pbx_voicemails  pbx_voicemails? @relation(fields: [voicemail_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_voicemail_greeti_voicemail_id_id_ee67c381_fk_pbx_voice")
+
+  @@index([voicemail_id_id], map: "pbx_voicemail_greetings_voicemail_id_id_ee67c381")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_voicemail_messages {
+  id               String          @id @db.Uuid
+  filename         String
+  name             String          @db.VarChar(64)
+  filestore        String          @db.VarChar(128)
+  caller_id_name   String?         @db.VarChar(32)
+  caller_id_number String?         @db.VarChar(32)
+  duration         Decimal         @db.Decimal(32, 0)
+  status           String          @db.VarChar(64)
+  read             DateTime?       @db.Timestamptz(6)
+  transcription    String?
+  base64           String?
+  created          DateTime?       @db.Timestamptz(6)
+  updated          DateTime?       @db.Timestamptz(6)
+  synchronised     DateTime?       @db.Timestamptz(6)
+  updated_by       String          @db.VarChar(64)
+  voicemail_id_id  String?         @db.Uuid
+  pbx_voicemails   pbx_voicemails? @relation(fields: [voicemail_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_voicemail_messag_voicemail_id_id_1f5e00d2_fk_pbx_voice")
+
+  @@index([voicemail_id_id], map: "pbx_voicemail_messages_voicemail_id_id_1f5e00d2")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_voicemail_options {
+  id              String         @id @db.Uuid
+  option_digits   String?        @db.VarChar(8)
+  option_action   String?        @db.VarChar(64)
+  option_param    String         @db.VarChar(128)
+  sequence        Decimal        @db.Decimal(3, 0)
+  description     String?        @db.VarChar(64)
+  created         DateTime?      @db.Timestamptz(6)
+  updated         DateTime?      @db.Timestamptz(6)
+  synchronised    DateTime?      @db.Timestamptz(6)
+  updated_by      String         @db.VarChar(64)
+  voicemail_id_id String         @db.Uuid
+  pbx_voicemails  pbx_voicemails @relation(fields: [voicemail_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_voicemail_option_voicemail_id_id_91c19fd9_fk_pbx_voice")
+
+  @@index([voicemail_id_id], map: "pbx_voicemail_options_voicemail_id_id_91c19fd9")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_voicemails {
+  id                         String                       @id @db.Uuid
+  password                   String?                      @db.VarChar(16)
+  greeting_id                Decimal?                     @db.Decimal(2, 0)
+  alternate_greeting_id      Decimal?                     @db.Decimal(2, 0)
+  mail_to                    String?                      @db.VarChar(256)
+  sms_to                     String?                      @db.VarChar(32)
+  cc                         String?                      @db.VarChar(64)
+  attach_file                String                       @db.VarChar(8)
+  local_after_email          String                       @db.VarChar(8)
+  enabled                    String                       @db.VarChar(8)
+  description                String?                      @db.VarChar(256)
+  created                    DateTime?                    @db.Timestamptz(6)
+  updated                    DateTime?                    @db.Timestamptz(6)
+  synchronised               DateTime?                    @db.Timestamptz(6)
+  updated_by                 String                       @db.VarChar(64)
+  extension_id_id            String?                      @db.Uuid
+  pbx_voicemail_destinations pbx_voicemail_destinations[]
+  pbx_voicemail_greetings    pbx_voicemail_greetings[]
+  pbx_voicemail_messages     pbx_voicemail_messages[]
+  pbx_voicemail_options      pbx_voicemail_options[]
+  pbx_extensions             pbx_extensions?              @relation(fields: [extension_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_voicemails_extension_id_id_f5c8e5c1_fk_pbx_extensions_id")
+
+  @@index([extension_id_id], map: "pbx_voicemails_extension_id_id_f5c8e5c1")
+
+  @@schema("vgtpbx_tenant")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model pbx_xml_cdr {
+  id                        String          @id @db.Uuid
+  domain_name               String?         @db.VarChar(128)
+  accountcode               String?         @db.VarChar(32)
+  direction                 String?         @db.VarChar(16)
+  context                   String?         @db.VarChar(128)
+  caller_id_name            String?         @db.VarChar(32)
+  caller_id_number          String?         @db.VarChar(32)
+  caller_destination        String?         @db.VarChar(32)
+  source_number             String?         @db.VarChar(32)
+  destination_number        String?         @db.VarChar(32)
+  start_epoch               Decimal?        @db.Decimal(32, 0)
+  start_stamp               DateTime?       @db.Timestamptz(6)
+  answer_epoch              Decimal?        @db.Decimal(32, 0)
+  answer_stamp              DateTime?       @db.Timestamptz(6)
+  end_epoch                 Decimal?        @db.Decimal(32, 0)
+  end_stamp                 DateTime?       @db.Timestamptz(6)
+  duration                  Decimal?        @db.Decimal(32, 0)
+  mduration                 Decimal?        @db.Decimal(32, 0)
+  billsec                   Decimal?        @db.Decimal(32, 0)
+  billmsec                  Decimal?        @db.Decimal(32, 0)
+  bridge_uuid               String?         @db.Uuid
+  read_codec                String?         @db.VarChar(16)
+  read_rate                 String?         @db.VarChar(16)
+  write_codec               String?         @db.VarChar(16)
+  write_rate                String?         @db.VarChar(16)
+  remote_media_ip           String?         @db.VarChar(128)
+  network_addr              String?         @db.VarChar(128)
+  record_path               String?         @db.VarChar(256)
+  record_name               String?         @db.VarChar(64)
+  leg                       String?         @db.VarChar(8)
+  pdd_ms                    Decimal?        @db.Decimal(32, 0)
+  rtp_audio_in_mos          Decimal?        @db.Decimal(4, 2)
+  last_app                  String?         @db.VarChar(32)
+  last_arg                  String?
+  missed_call               Boolean?
+  cc_side                   String?         @db.VarChar(16)
+  cc_member_uuid            String?         @db.Uuid
+  cc_queue_joined_epoch     Decimal?        @db.Decimal(32, 0)
+  cc_queue                  String?         @db.Uuid
+  cc_member_session_uuid    String?         @db.Uuid
+  cc_agent_uuid             String?         @db.Uuid
+  cc_agent                  String?         @db.Uuid
+  cc_agent_type             String?         @db.VarChar(32)
+  cc_agent_bridged          String?         @db.VarChar(8)
+  cc_queue_answered_epoch   Decimal?        @db.Decimal(32, 0)
+  cc_queue_terminated_epoch Decimal?        @db.Decimal(32, 0)
+  cc_queue_canceled_epoch   Decimal?        @db.Decimal(32, 0)
+  cc_cancel_reason          String?         @db.VarChar(32)
+  cc_cause                  String?         @db.VarChar(32)
+  waitsec                   Decimal?        @db.Decimal(32, 0)
+  conference_name           String?         @db.VarChar(256)
+  conference_uuid           String?         @db.Uuid
+  conference_member_id      String?         @db.VarChar(8)
+  digits_dialed             String?         @db.VarChar(64)
+  pin_number                String?         @db.VarChar(16)
+  hangup_cause              String?         @db.VarChar(32)
+  hangup_cause_q850         Decimal?        @db.Decimal(4, 0)
+  sip_hangup_disposition    String?         @db.VarChar(32)
+  xml                       String?
+  json                      Json?
+  created                   DateTime?       @db.Timestamptz(6)
+  updated                   DateTime?       @db.Timestamptz(6)
+  synchronised              DateTime?       @db.Timestamptz(6)
+  updated_by                String          @db.VarChar(64)
+  domain_id_id              String?         @db.Uuid
+  extension_id_id           String?         @db.Uuid
+  core_uuid                 String?         @db.Uuid
+  call_uuid                 String?         @db.Uuid
+  pbx_domains               pbx_domains?    @relation(fields: [domain_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_xml_cdr_domain_id_id_ccce6e81_fk_pbx_domains_id")
+  pbx_extensions            pbx_extensions? @relation(fields: [extension_id_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pbx_xml_cdr_extension_id_id_f5f7d64e_fk_pbx_extensions_id")
+
+  @@index([domain_id_id], map: "pbx_xml_cdr_domain_id_id_ccce6e81")
+  @@index([extension_id_id], map: "pbx_xml_cdr_extension_id_id_f5f7d64e")
+
+  @@schema("vgtpbx_tenant")
+}
+
+
+
+model Message {
+  id          String           @id @default(uuid())
+  from        String
+  to          String
+  body        String
+  direction   MessageDirection
+  status      MessageStatus
+  tenant      auth_tenant      @relation(fields: [tenantId], references: [id])
+  tenantId    String          @db.VarChar(50)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([tenantId])
+
+  @@schema("vgtpbx_tenant")
+}
+
+model Webhook {
+  id          String      @id @default(uuid())
+  name        String
+  url         String
+  secret      String?
+  events      String[]
+  enabled     Boolean     @default(true)
+  tenant      auth_tenant @relation(fields: [tenantId], references: [id])
+  tenantId    String     @db.VarChar(50)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([tenantId])
+
+  @@schema("vgtpbx_tenant")
+}
+
+model Integration {
+  id          String      @id @default(uuid())
+  type        String      // "slack", "teams", etc.
+  name        String
+  config      Json
+  enabled     Boolean     @default(true)
+  tenant      auth_tenant @relation(fields: [tenantId], references: [id])
+  tenantId    String     @db.VarChar(50)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([tenantId])
+
+  @@schema("vgtpbx_tenant")
+}
+
+model NotificationSettings {
+  id                  String      @id @default(uuid())
+  tenant              auth_tenant @relation(fields: [tenantId], references: [id])
+  tenantId            String     @unique @db.VarChar(50)
+  missedCallEnabled   Boolean    @default(true)
+  missedCallChannels  String[]   @default(["email"])
+  voicemailEnabled    Boolean    @default(true)
+  voicemailChannels   String[]   @default(["email"])
+  messageEnabled      Boolean    @default(true)
+  messageChannels     String[]   @default(["email"])
+  templates           Json       // Store notification templates
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([tenantId])
+
+  @@schema("vgtpbx_tenant")
+}
+
+model BillingPlan {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  price       Float
+  features    Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@schema("public")
+}
+
+model TenantBilling {
+  id              String   @id @default(uuid())
+  tenantId        String   @unique
+  planId          String
+  status          String
+  nextBillingDate DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@schema("public")
+}
+
+model BillingTransaction {
+  id        String   @id @default(uuid())
+  tenantId  String
+  planId    String
+  amount    Float
+  status    String
+  createdAt DateTime @default(now())
+
+  @@schema("public")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  USER
+
+  @@schema("vgtpbx_tenant")
+}
+
+enum RuleType {
+  INBOUND
+  OUTBOUND
+
+  @@schema("vgtpbx_tenant")
+}
+
+enum CallStatus {
+  ANSWERED
+  MISSED
+  VOICEMAIL
+  FAILED
+
+  @@schema("vgtpbx_tenant")
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+
+  @@schema("vgtpbx_tenant")
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+
+  @@schema("vgtpbx_tenant")
+}
