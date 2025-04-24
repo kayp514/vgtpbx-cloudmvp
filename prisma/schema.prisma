@@ -160,6 +160,7 @@ model auth_user_mapping {
 model domain_mapping {
   id          String   @id @default(cuid()) @db.VarChar(50)
   fullDomain  String   @unique @db.VarChar(255)
+  fullDomainUid    String   @db.VarChar(50)
   tenantId    String   @db.VarChar(50)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

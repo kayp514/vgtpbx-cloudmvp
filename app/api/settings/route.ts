@@ -1,14 +1,14 @@
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/utils/firebase';
-import { PrismaClient } from '@prisma/client';
+import { NextResponse } from 'next/server'
+import { auth } from '@tern-secure/nextjs/server'
+import { PrismaClient } from '@prisma/client'
 import { headers } from 'next/headers';
 
 const prisma = new PrismaClient();
 
 async function getUserAndTenant(authHeader: string) {
   try {
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
+
+    const session = await auth()
     
     const user = await prisma.user.findUnique({
       where: { firebaseUid: decodedToken.uid },

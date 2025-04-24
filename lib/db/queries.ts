@@ -489,6 +489,7 @@ export async function createUserWithPbxOwnSchemaFile(
       const domainMapping = await tx.domain_mapping.create({
         data: {
           fullDomain: domain.name, // This is the full domain name (e.g., subdomain.vgtpbx.dev)
+          fullDomainUid: domain.id,
           tenantId: tenant.id,
         }
       });

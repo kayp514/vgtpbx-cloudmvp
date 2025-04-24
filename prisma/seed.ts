@@ -78,6 +78,7 @@ async function seed() {
       update: {},
       create: {
         fullDomain: defaultDomain.name,
+        fullDomainUid: defaultDomain.id,
         tenantId: defaultTenant.id,
       }
     })

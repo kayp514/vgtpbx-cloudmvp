@@ -15,6 +15,7 @@ import {
   CreditCard,
   Shield,
   Clock,
+  Hash
 } from "lucide-react"
 import type { UserRole } from "@/lib/db/types"
 
@@ -170,6 +171,31 @@ export const navigation: NavItem[] = [
         icon: MessageSquare,
         roles: ["admin", "superuser"],
         permission: "messaging.templates",
+      },
+    ],
+  },
+
+  // extensions and DIDs Section
+  {
+    name: "Numbers",
+    icon: Phone,
+    hasSubmenu: true,
+    section: "numbers",
+    roles: ["admin", "superuser", "member"],
+    submenu: [
+      {
+        name: "Extensions",
+        href: "/dashboard/ext-numbers/extensions",
+        icon: Hash,
+        roles: ["admin", "superuser", "member"],
+        permission: "numbers.extensions",
+      },
+      {
+        name: "DID Numbers",
+        href: "/dashboard/ext-numbers/did",
+        icon: Phone,
+        roles: ["admin", "superuser", "member"],
+        permission: "numbers.did",
       },
     ],
   },

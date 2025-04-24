@@ -12,10 +12,13 @@ import {
   getTenantByUserId,
   createTenant,
   createUserWithPbxOwnSchema,
-  createUserWithPbxOwnSchemaFile
+  createUserWithPbxOwnSchemaFile,
 } from '@/lib/db/queries'
 
-import { getUserDetailsByUid } from '@/lib/db/q'
+import { 
+  getUserDetailsByUid,
+  createPbxExtension
+ } from '@/lib/db/q'
 
 import type { 
   FirebaseAuthUser, 
@@ -43,41 +46,45 @@ export async function generateNewAccountId(): Promise<string> {
 
 
 export async function addExtension(formData: FormData) {
-  const extension = formData.get('extension') as string
-  const password = formData.get('password') as string
-  const domain_uuid = formData.get('domain_uuid') as string
-  const user_context = formData.get('user_context') as string
-
   try {
-    const newExtension = await prisma.pbx_extensions.create({
-      data: {
-        id: crypto.randomUUID(),
-        extension,
-        password,
-        domain_uuid,
-        user_context,
-        created: new Date(),
-        updated: new Date(),
-        updated_by: 'system',
-        disabled: false,
-        directory_visible: 'true',
-        directory_exten_visible: 'true',
-        call_screen_enabled: 'false',
-        do_not_disturb: 'false',
-        forward_all_enabled: 'false',
-        forward_busy_enabled: 'false',
-        forward_no_answer_enabled: 'false',
-        forward_user_not_registered_enabled: 'false',
-        follow_me_enabled: 'false',
-        force_ping: 'false',
-      },
+    // Get values from form data
+    const extension = formData.get('extension')
+    const password = formData.get('password')
+    const description = formData.get('description')
+
+    // Validate required fields
+    if (!extension || !password) {
+      throw new Error('Missing required fields')
+    }
+
+    // Get the current user's UID from the session or context
+    // For this example, we'll need to pass it from the form
+    const uid = formData.get('uid')
+    if (!uid) {
+      throw new Error('User authentication required')
+    }
+
+    // Create the extension using our multi-tenant aware function
+    const newExtension = await createPbxExtension(uid.toString(), {
+      extension: extension.toString(),
+      password: password.toString(),
+      description: description?.toString(),
     })
 
-    revalidatePath('/dashboard/accounts/extensions')
-    return { success: true, data: newExtension }
+    // Revalidate the extensions page to show the new extension
+    revalidatePath('/dashboard/ext-numbers')
+    
+    return { 
+      success: true, 
+      data: newExtension 
+    }
+
   } catch (error) {
     console.error('Error adding extension:', error)
-    return { success: false, error: 'Failed to add extension' }
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to add extension'
+    }
   }
 }
 
@@ -404,9 +411,9 @@ export async function getPbxUserByAccount(accountId: string): Promise<{
 }
 
 export async function getPbxUsersByAccount(accountId: string): Promise<{
-  success: boolean;
-  data?: PbxUserFull[];
-  error?: string;
+  success: boolean,
+  data?: PbxUserFull[],
+  error?: string
 }> {
   try {
     const tenant = await prisma.auth_tenant.findUnique({

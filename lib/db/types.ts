@@ -134,7 +134,6 @@ import type {
   
   
   export const DEFAULT_EXTENSION_VALUES = {
-    id: crypto.randomUUID(),
     created: new Date(),
     updated: new Date(),
     updated_by: 'system',
@@ -153,7 +152,6 @@ import type {
   
   
   export const EXTENSION_USER_DEFAULTS = {
-    id: crypto.randomUUID(),
     created: new Date(),
     updated: new Date(),
     updated_by: 'system',
@@ -521,7 +519,7 @@ import type {
   export interface ExtensionCreateInput {
     extension: string;
     password: string;
-    domain_uuid: string;
+    domain_uuid?: string;
     description?: string;
     users?: ExtensionUserCreateInput[];
   }
@@ -529,10 +527,9 @@ import type {
   export type ExtensionDisplay = Pick<Extension,
   | 'id'
   | 'extension'
-  | 'effective_caller_id_name'
-  | 'effective_caller_id_number' 
+  | 'outbound_caller_id_name'
+  | 'outbound_caller_id_number' 
   | 'call_group'
-  | 'user_context'
   | 'disabled'
   >;
   

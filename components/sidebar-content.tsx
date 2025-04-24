@@ -57,6 +57,7 @@ export function SidebarContent() {
     const dialplanItems = navigation.filter((item) => item.section === "dialplan")
     const voiceItems = navigation.filter((item) => item.section === "voice")
     const messagingItems = navigation.filter((item) => item.section === "messaging")
+    const extNumbersItems = navigation.filter((item) => item.section === "numbers")
     const siptrunksItems = navigation.filter((item) => item.section === "siptrunks")
     const reportsItems = navigation.filter((item) => item.section === "reports")
     const settingsItems = navigation.filter((item) => item.section === "settings")
@@ -253,6 +254,7 @@ export function SidebarContent() {
             {renderSection(dialplanItems, "dialplan")}
             {renderSection(voiceItems, "voice")}
             {renderSection(messagingItems, "messaging")}
+            {renderSection(extNumbersItems, "ext-numbers")}
             {renderSection(siptrunksItems, "siptrunks")}
             {renderSection(reportsItems, "reports")}
             {renderSection(settingsItems, "settings")}
