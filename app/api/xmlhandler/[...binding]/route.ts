@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { create } from 'xmlbuilder2'
 import { prisma } from '@/lib/prisma'
 import { getTenantByDomain } from '@/lib/db/queries'
+import { getDirectoryExtension } from '@/lib/db/q'
 
 const genericNotFoundXml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <document type="freeswitch/xml">
@@ -26,7 +27,6 @@ async function handleDirectory(formData: FormData) {
     console.log(`Handling Directory Request for network-list purpose (key: ${domainKeyValue}) - returning structured not found.`);
     return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   } else if (purpose === 'gateways') {
-    // Gateways are included via X-PRE-PROCESS in sofia.conf, so return not found for dynamic lookup.
     console.log(`Handling Directory Request for gateways purpose (profile: ${profileName}) - returning structured not found.`);
     return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }
@@ -41,21 +41,10 @@ async function handleDirectory(formData: FormData) {
   }
 
   try {
-    const tenantDomain = await getTenantByDomain(domain);
+    const extension = await getDirectoryExtension(user, domain);
 
-    if (!tenantDomain) {
-      console.log(`Tenant not found for domain: ${domain}`);
-      return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
-    }
-    const pbxUser = await prisma.pbx_users.findFirst({
-      where: {
-        username: user,
-        domainId: tenantDomain.id,
-      },
-    })
-
-    if (!pbxUser) {
-      console.log(`User '${user}' not found in domain '${domain}'`);
+    if (!extension) {
+      console.log(`Extension '${user}' not found in domain '${domain}'`);
       return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
     }
 
@@ -68,17 +57,71 @@ async function handleDirectory(formData: FormData) {
                 .ele('users')
                   .ele('user', { id: user });
 
+    // Add parameters
     const params = directoryXmlBuilder.ele('params');
-      params.ele('param', { name: 'password', value: '1234' });
-
-      params.ele('param', { name: 'vm-password', value: '1234' });
+    
+    // Add essential parameters
+    params.ele('param', { name: 'password', value: extension.password });
+    
+    // Add optional parameters if they exist
+    if (extension.accountcode) {
+      params.ele('param', { name: 'accountcode', value: extension.accountcode });
+    }
+    if (extension.toll_allow) {
+      params.ele('param', { name: 'toll_allow', value: extension.toll_allow });
+    }
+    if (extension.user_record) {
+      params.ele('param', { name: 'user_record', value: extension.user_record });
+    }
 
     params.up();
 
+    // Add variables
     const variables = directoryXmlBuilder.ele('variables');
 
+    // Add user context
+    variables.ele('variable', { 
+      name: 'user_context', 
+      value: extension.user_context || domain 
+    });
 
-      variables.ele('variable', { name: 'user_context', value: domain });
+    // Add caller ID information
+    if (extension.effective_caller_id_name) {
+      variables.ele('variable', { 
+        name: 'effective_caller_id_name', 
+        value: extension.effective_caller_id_name 
+      });
+    }
+    if (extension.effective_caller_id_number) {
+      variables.ele('variable', { 
+        name: 'effective_caller_id_number', 
+        value: extension.effective_caller_id_number 
+      });
+    }
+    if (extension.outbound_caller_id_name) {
+      variables.ele('variable', { 
+        name: 'outbound_caller_id_name', 
+        value: extension.outbound_caller_id_name 
+      });
+    }
+    if (extension.outbound_caller_id_number) {
+      variables.ele('variable', { 
+        name: 'outbound_caller_id_number', 
+        value: extension.outbound_caller_id_number 
+      });
+    }
+    if (extension.call_group) {
+      variables.ele('variable', { 
+        name: 'call_group', 
+        value: extension.call_group 
+      });
+    }
+    if (extension.call_timeout) {
+      variables.ele('variable', { 
+        name: 'call_timeout', 
+        value: extension.call_timeout.toString() 
+      });
+    }
 
     variables.up();
 

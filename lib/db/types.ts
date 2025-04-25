@@ -527,8 +527,8 @@ import type {
   export type ExtensionDisplay = Pick<Extension,
   | 'id'
   | 'extension'
-  | 'outbound_caller_id_name'
-  | 'outbound_caller_id_number' 
+  | 'effective_caller_id_name'
+  | 'effective_caller_id_number' 
   | 'call_group'
   | 'disabled'
   >;

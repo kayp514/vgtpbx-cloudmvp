@@ -72,7 +72,7 @@ export async function addExtension(formData: FormData) {
     })
 
     // Revalidate the extensions page to show the new extension
-    revalidatePath('/dashboard/ext-numbers')
+    revalidatePath('/dashboard/ext-numbers/extensions')
     
     return { 
       success: true, 
@@ -110,7 +110,7 @@ export async function createAuthPbxUser(
     const tenantData: TenantCreateInput = {
         accountId: firebaseUser.accountId,
         name: 'default',
-        domain: 'vgtpbx.dev',
+        domain: 'vogat.lifesprintcare.ca',
         description: `Organization for ${firebaseUser.email}`,
         plan: 'basic',
         maxUsers: 5,

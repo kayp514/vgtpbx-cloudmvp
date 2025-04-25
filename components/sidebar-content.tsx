@@ -33,6 +33,7 @@ export function SidebarContent() {
       dialplan: true,
       voice: true,
       messaging: true,
+      numbers: true,
       siptrunks: true,
       reports: true,
       settings: true,
@@ -251,13 +252,13 @@ export function SidebarContent() {
           <div className="space-y-2">
             {/* Consistent spacing between section groups */}
             {renderSection(usersItems, "users")}
-            {renderSection(dialplanItems, "dialplan")}
-            {renderSection(voiceItems, "voice")}
-            {renderSection(messagingItems, "messaging")}
-            {renderSection(extNumbersItems, "ext-numbers")}
-            {renderSection(siptrunksItems, "siptrunks")}
-            {renderSection(reportsItems, "reports")}
-            {renderSection(settingsItems, "settings")}
+            {/* {renderSection(dialplanItems, "dialplan")} */}
+            {/* {renderSection(voiceItems, "voice")} */}
+            {/* {renderSection(messagingItems, "messaging")} */}
+            {renderSection(extNumbersItems, "numbers")}
+            {/* {renderSection(siptrunksItems, "siptrunks")} */}
+            {/* {renderSection(reportsItems, "reports")} */}
+            {/* {renderSection(settingsItems, "settings")} */}
           </div>
         </SidebarContentPrimitive>
   

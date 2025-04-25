@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -16,17 +17,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Hash, MoreHorizontal, Pencil, Trash, Phone, User } from "lucide-react"
+import { Hash, MoreHorizontal, Pencil, Trash, Phone, User,  } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ExtensionDisplay } from "@/lib/db/types"
 
 interface ExtensionsTableProps {
   extensions: ExtensionDisplay[]
+  selectedExtensions: string[]
   onEdit: (extensionId: string) => void
+  toggleAll: () => void
 }
 
 export function ExtensionsTable({ 
   extensions,
+  selectedExtensions,
+  toggleAll,
   onEdit 
 }: ExtensionsTableProps) {
     return (
@@ -59,8 +64,8 @@ export function ExtensionsTable({
               <TableRow>
                 <TableHead>Extension</TableHead>
                 <TableHead>CID Name</TableHead>
-                <TableHead>DID Number</TableHead>
                 <TableHead>Call Group</TableHead>
+                <TableHead>DID Number</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
@@ -84,13 +89,23 @@ export function ExtensionsTable({
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <User className="h-4 w-4 text-muted-foreground" />
-                        {extension.outbound_caller_id_name || '-'}
+                        {extension.effective_caller_id_name || '-'}
                       </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-normal">
-                        {extension.call_group || 'default'}
+                        {extension.call_group || '-'}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {extension.effective_caller_id_number ? (
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-muted-foreground" />
+                          {extension.effective_caller_id_number || '-'}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -103,16 +118,6 @@ export function ExtensionsTable({
                       >
                         {extension.disabled ? 'disabled' : 'enabled'}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {extension.outbound_caller_id_number ? (
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-muted-foreground" />
-                          {extension.outbound_caller_id_number}
-                        </div>
-                      ) : (
-                        "-"
-                      )}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

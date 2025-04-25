@@ -25,7 +25,7 @@ async function seed() {
         ...TENANT_DEFAULTS,
         accountId,
         name: 'default',
-        domain: 'vgtpbx.dev',
+        domain: 'vogat.lifesprintcare.ca',
         description: 'Default tenant for system',
         plan: 'system',
         maxUsers: 1005,
@@ -34,22 +34,22 @@ async function seed() {
     })
 
     const defaultDomain = await prisma.pbx_domains.upsert({
-      where: { name: 'vgtpbx.dev' },
+      where: { name: 'vogat.lifesprintcare.ca' },
       update: {},
       create: {
         ...DOMAIN_DEFAULTS,
-        name: 'vgtpbx.dev',
+        name: 'vogat.lifesprintcare.ca',
         description: 'Default system domain',
         tenantId: defaultTenant.id,
       }
     })
 
     const defaultAdmin = await prisma.auth_user.upsert({
-      where: { email: 'admin@vgtpbx.dev' },
+      where: { email: 'admin@vogat.lifesprintcare.ca' },
       update: {},
       create: {
         uid: crypto.randomUUID(),
-        email: 'admin@vgtpbx.dev',
+        email: 'admin@vogat.lifesprintcare.ca',
         displayName: 'System Admin',
         isSuperuser: true,
         isAdmin: true,

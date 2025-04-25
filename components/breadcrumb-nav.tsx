@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { ChevronRight } from "lucide-react"
 
-const segmentsWithoutPages = ['settings', 'siptrunks', 'switch', 'monitoring', 'users-and-auth', 'tenants']
+const segmentsWithoutPages = ['settings', 'siptrunks', 'switch', 'monitoring', 'users-and-auth', 'tenants', 'ext-numbers']
 
 const hasOwnPage = (segment: string, index: number, segments: string[]) => {
   const lowerSegment = segment.toLowerCase()

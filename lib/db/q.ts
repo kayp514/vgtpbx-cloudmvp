@@ -343,6 +343,7 @@ export async function createPbxExtension(uid: string, input: ExtensionCreateInpu
         password,
         domain_uuid,
         description,
+        user_context,
         created,
         updated,
         updated_by,
@@ -363,6 +364,7 @@ export async function createPbxExtension(uid: string, input: ExtensionCreateInpu
         ${input.password},
         ${domainMapping.fullDomainUid}::uuid,
         ${input.description || null},
+        ${domainMapping.fullDomain},
         ${now},
         ${now},
         ${extensionDefaults.updated_by},
@@ -425,5 +427,72 @@ export async function createPbxExtension(uid: string, input: ExtensionCreateInpu
   } catch (error) {
     console.error('Error creating PBX extension:', error);
     throw new Error('Failed to create PBX extension');
+  }
+}
+
+
+/**
+ * Get extension details for FreeSWITCH directory lookup
+ */
+export async function getDirectoryExtension(extensionNumber: string, domain: string) {
+  try {
+    // Get domain mapping to find the correct tenant and schema
+    const domainMapping = await prisma.domain_mapping.findFirst({
+      where: { fullDomain: domain },
+      include: {
+        tenant: true
+      }
+    });
+
+    if (!domainMapping) {
+      throw new Error(`Domain not found: ${domain}`);
+    }
+
+    // Get schema name from tenant's accountId
+    const schemaName = `vgtpbx_${domainMapping.tenant.accountId}`;
+
+    // Query the extension from the correct schema
+    const extension = await prisma.$queryRaw<any[]>`
+      SELECT 
+        e.id,
+        e.extension,
+        e.password,
+        e.user_context,
+        e.effective_caller_id_name,
+        e.effective_caller_id_number,
+        e.outbound_caller_id_name,
+        e.outbound_caller_id_number,
+        e.directory_first_name,
+        e.directory_last_name,
+        e.directory_visible,
+        e.directory_exten_visible,
+        e.call_timeout,
+        e.call_group,
+        e.user_record,
+        e.toll_allow,
+        e.accountcode,
+        d.name as domain_name
+      FROM ${Prisma.raw(`"${schemaName}"`)}."pbx_extensions" e
+      JOIN ${Prisma.raw(`"${schemaName}"`)}."pbx_domains" d 
+        ON e.domain_uuid = d.id
+      WHERE 
+        e.extension = ${extensionNumber}
+        AND e.disabled = false
+        AND d.name = ${domain}
+      LIMIT 1
+    `;
+
+    if (!extension || extension.length === 0) {
+      return null;
+    }
+
+    return {
+      ...extension[0],
+      schemaName,
+      tenantId: domainMapping.tenant.id
+    };
+  } catch (error) {
+    console.error('Error getting directory extension:', error);
+    throw new Error('Failed to get directory extension');
   }
 }

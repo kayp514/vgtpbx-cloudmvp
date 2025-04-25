@@ -20,18 +20,18 @@ async function getExtensions(): Promise<ExtensionDisplay[]> {
     throw new Error('Failed to fetch extensions')
   }
 
-  const extension = response.data
-  console.log(extension)
-    const transformedExtension: ExtensionDisplay = {
-      id: extension.id,
-      extension: extension.extension,
-      outbound_caller_id_name: extension.outbound_caller_id_name,
-      outbound_caller_id_number: extension.outbound_caller_id_number,
-      call_group: extension.call_group,
-      disabled: extension.disabled,
-    }
+  const extensionsData = response.data
+  console.log(extensionsData)
+  const transformedExtensions: ExtensionDisplay[] = extensionsData.map((ext: any) => ({
+      id: ext.id,
+      extension: ext.extension,
+      effective_caller_id_name: ext.effective_caller_id_name,
+      effective_caller_id_number: ext.effective_caller_id_number,
+      call_group: ext.call_group,
+      disabled: ext.disabled,
+    }));
 
-  return [transformedExtension]
+  return transformedExtensions
 
 }
 
