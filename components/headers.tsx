@@ -2,7 +2,30 @@
 
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/page-layout"
-import { Filter, Download, Plus, RefreshCw, Trash2, UserPlus } from "lucide-react"
+import type { PbxUserDisplay } from "@/lib/db/types"
+import {
+  ArrowLeft,
+  Filter,
+  Download,
+  Plus, 
+  RefreshCw,
+  Trash2,
+  UserPlus,
+  Save,
+  Loader2,
+  Phone,
+  User,
+  Bell,
+  BellOff,
+  Users,
+  Shield,
+  Settings,
+  PhoneForwarded,
+  PhoneOff,
+  Eye,
+  EyeOff,
+  Volume2,
+} from "lucide-react"
 
 interface ExtensionsHeaderProps {
   selectedCount?: number
@@ -24,6 +47,10 @@ interface UsersHeaderProps {
   selectedCount: number
   onCreateUser: () => void
   onBulkDelete: () => void
+}
+
+interface UserEditHeaderProps {
+  user: PbxUserDisplay
 }
 
 interface TenantHeaderProps {
@@ -175,6 +202,27 @@ export function UsersHeader({ selectedCount, onCreateUser, onBulkDelete }: Users
     />
   )
 }
+
+
+export function UserEditHeader({ user }: UserEditHeaderProps) {
+  return (
+    <PageHeader
+      title="Edit User"
+      description={`Edit settings for ${user.auth_user.displayName}`}
+      actions={
+        <>
+          <Button variant="outline" size="sm" asChild>
+            <a href="/dashboard/users">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Users
+            </a>
+          </Button>
+        </>
+      }
+    />
+  )
+}
+
 
 export function ExtensionsHeader({ selectedCount = 0 }: ExtensionsHeaderProps) {
   return (

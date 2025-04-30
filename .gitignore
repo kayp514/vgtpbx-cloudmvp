@@ -20,10 +20,13 @@
 # production
 /build
 
+generated
+
 # misc
 .DS_Store
 *.pem
-
+*.sql
+*.json
 # debug
 npm-debug.log*
 yarn-debug.log*

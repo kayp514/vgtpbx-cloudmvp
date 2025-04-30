@@ -58,8 +58,21 @@ import type {
   export interface Module extends pbx_modules {}
   export interface Variable extends pbx_vars {}
   export interface Tenant extends auth_tenant {}
-  
-  
+
+export class DatabaseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DatabaseError';
+  }
+}
+
+export const numberTypes = ["Local", "Toll-Free", "International", "Ported"] as const
+export type NumberType = (typeof numberTypes)[number]
+
+export const forwardingRules = ["Always", "No Answer", "Busy", "Custom"] as const
+export type ForwardingRule = (typeof forwardingRules)[number]
+
+
   
   export type UserRole = "superuser" | "admin" | "staff" | "member"
   
@@ -282,7 +295,8 @@ import type {
       | 'isStaff'
       | 'avatar'
     >;
-    role?: UserRole;
+    role?: UserRole
+    extension?: Extension
   };
   
   export type PbxUserSettingDisplay = Pick<PbxUserSettingFull,
@@ -852,6 +866,5 @@ import type {
     id: string
     name: string
   }
-  
-  
-    
+
+

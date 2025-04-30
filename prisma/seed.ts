@@ -1,8 +1,12 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '@/prisma/generated/client'
 import { DOMAIN_DEFAULTS, TENANT_DEFAULTS } from '../lib/db/types'
-import { generateUniqueAccountId } from '@/lib/generate-account'
-import { defaultAccessControlNodes, defaultAccessControls, defaultSipProfilesFull } from '../lib/db/switch-data'
-
+import {
+  defaultAccessControlNodes,
+  defaultAccessControls,
+  defaultSipProfilesFull
+} from '../lib/db/switch-data'
+// Import the dialplan defaults JSON data
+import dialplanDefaultsData from '../lib/db/pbx_dialplan_defaults_202504281444.json' // Adjust path if necessary
 
 const prisma = new PrismaClient()
 
@@ -84,7 +88,7 @@ async function seed() {
     })
 
     for (const aclData of defaultAccessControls) {
-      const seedACLs = await prisma.pbx_access_controls.upsert({
+      await prisma.pbx_access_controls.upsert({
           where: {
               id: aclData.id
           },
@@ -92,7 +96,7 @@ async function seed() {
               name: aclData.name,
               default: aclData.default,
               description: aclData.description,
-              synchronised: aclData.synchronised,
+              synchronised: aclData.synchronised ? new Date(aclData.synchronised) : null,
               updated: new Date(),
               updated_by: 'system',
           },
@@ -101,43 +105,43 @@ async function seed() {
               name: aclData.name,
               default: aclData.default,
               description: aclData.description,
-              synchronised: aclData.synchronised,
+              synchronised: aclData.synchronised ? new Date(aclData.synchronised) : null,
               created: new Date(),
               updated: new Date(),
               updated_by: 'system',
           }
       });
-  }
+    }
 
-  for (const nodeData of defaultAccessControlNodes) {
-    const seedACLNodes = await prisma.pbx_access_control_nodes.upsert({
-        where: {
-            id: nodeData.id
-        },
-        update: {
-            type: nodeData.type,
-            cidr: nodeData.cidr,
-            domain: nodeData.domain,
-            description: nodeData.description,
-            synchronised: nodeData.synchronised,
-            updated: new Date(),
-            updated_by: 'system',
-            access_control_id_id: nodeData.access_control_id_id,
-        },
-        create: {
-            id: nodeData.id,
-            type: nodeData.type,
-            cidr: nodeData.cidr,
-            domain: nodeData.domain,
-            description: nodeData.description,
-            synchronised: nodeData.synchronised,
-            created: new Date(),
-            updated: new Date(),
-            updated_by: 'system',
-            access_control_id_id: nodeData.access_control_id_id,
-        }
-    });
-}
+    for (const nodeData of defaultAccessControlNodes) {
+      await prisma.pbx_access_control_nodes.upsert({
+          where: {
+              id: nodeData.id
+          },
+          update: {
+              type: nodeData.type,
+              cidr: nodeData.cidr,
+              domain: nodeData.domain,
+              description: nodeData.description,
+              synchronised: nodeData.synchronised ? new Date(nodeData.synchronised) : null,
+              updated: new Date(),
+              updated_by: 'system',
+              access_control_id_id: nodeData.access_control_id_id,
+          },
+          create: {
+              id: nodeData.id,
+              type: nodeData.type,
+              cidr: nodeData.cidr,
+              domain: nodeData.domain,
+              description: nodeData.description,
+              synchronised: nodeData.synchronised ? new Date(nodeData.synchronised) : null,
+              created: new Date(),
+              updated: new Date(),
+              updated_by: 'system',
+              access_control_id_id: nodeData.access_control_id_id,
+          }
+      });
+    }
 
     // Seed SIP Profiles and related data
     for (const profileData of defaultSipProfilesFull) {
@@ -149,7 +153,7 @@ async function seed() {
           hostname: profileData.hostname,
           disabled: profileData.disabled,
           description: profileData.description,
-          synchronised: profileData.synchronised,
+          synchronised: profileData.synchronised ? new Date(profileData.synchronised) : null,
           updated: new Date(),
           updated_by: 'system',
         },
@@ -159,7 +163,7 @@ async function seed() {
           hostname: profileData.hostname,
           disabled: profileData.disabled,
           description: profileData.description,
-          synchronised: profileData.synchronised,
+          synchronised: profileData.synchronised ? new Date(profileData.synchronised) : null,
           created: new Date(),
           updated: new Date(),
           updated_by: 'system',
@@ -174,7 +178,7 @@ async function seed() {
             name: domainData.name,
             alias: domainData.alias,
             parse: domainData.parse,
-            synchronised: domainData.synchronised,
+            synchronised: domainData.synchronised ? new Date(domainData.synchronised) : null,
             updated: new Date(),
             updated_by: 'system',
             sip_profile_id: sipProfile.id,
@@ -184,7 +188,7 @@ async function seed() {
             name: domainData.name,
             alias: domainData.alias,
             parse: domainData.parse,
-            synchronised: domainData.synchronised,
+            synchronised: domainData.synchronised ? new Date(domainData.synchronised) : null,
             created: new Date(),
             updated: new Date(),
             updated_by: 'system',
@@ -202,7 +206,7 @@ async function seed() {
             value: settingData.value,
             disabled: settingData.disabled,
             description: settingData.description,
-            synchronised: settingData.synchronised,
+            synchronised: settingData.synchronised ? new Date(settingData.synchronised) : null,
             updated: new Date(),
             updated_by: 'system',
             sip_profile_id: sipProfile.id,
@@ -213,7 +217,7 @@ async function seed() {
             value: settingData.value,
             disabled: settingData.disabled,
             description: settingData.description,
-            synchronised: settingData.synchronised,
+            synchronised: settingData.synchronised ? new Date(settingData.synchronised) : null,
             created: new Date(),
             updated: new Date(),
             updated_by: 'system',
@@ -223,13 +227,58 @@ async function seed() {
       }
     }
 
+    // Seed Dialplan Defaults
+    for (const dialplanDefault of dialplanDefaultsData.pbx_dialplan_defaults) {
+      await prisma.pbx_dialplan_defaults.upsert({
+        where: { id: dialplanDefault.id },
+        update: {
+          app_id: dialplanDefault.app_id,
+          context: dialplanDefault.context,
+          category: dialplanDefault.category,
+          name: dialplanDefault.name,
+          number: dialplanDefault.number,
+          destination: dialplanDefault.destination === 'true', // Convert string to boolean
+          dp_continue: dialplanDefault.dp_continue === 'true', // Convert string to boolean
+          dp_enabled: dialplanDefault.dp_enabled === 'true', // Convert string to boolean
+          xml: dialplanDefault.xml,
+          sequence: dialplanDefault.sequence,
+          enabled: dialplanDefault.enabled === 'true', // Convert string to boolean
+          description: dialplanDefault.description,
+          synchronised: dialplanDefault.synchronised ? new Date(dialplanDefault.synchronised) : null,
+          updated: new Date(dialplanDefault.updated),
+          updated_by: dialplanDefault.updated_by,
+        },
+        create: {
+          id: dialplanDefault.id,
+          app_id: dialplanDefault.app_id,
+          context: dialplanDefault.context,
+          category: dialplanDefault.category,
+          name: dialplanDefault.name,
+          number: dialplanDefault.number,
+          destination: dialplanDefault.destination === 'true', // Convert string to boolean
+          dp_continue: dialplanDefault.dp_continue === 'true', // Convert string to boolean
+          dp_enabled: dialplanDefault.dp_enabled === 'true', // Convert string to boolean
+          xml: dialplanDefault.xml,
+          sequence: dialplanDefault.sequence,
+          enabled: dialplanDefault.enabled === 'true', // Convert string to boolean
+          description: dialplanDefault.description,
+          created: new Date(dialplanDefault.created),
+          updated: new Date(dialplanDefault.updated),
+          synchronised: dialplanDefault.synchronised ? new Date(dialplanDefault.synchronised) : null,
+          updated_by: dialplanDefault.updated_by,
+        }
+      });
+    }
+
     console.log('Seeded:', { 
       defaultTenant, 
       defaultDomain,
       defaultAdmin,
       userMapping,
       domainMapping,
-      sipProfiles: 'SIP Profiles and related data seeded successfully'
+      accessControls: 'Access Controls seeded',
+      sipProfiles: 'SIP Profiles seeded',
+      dialplanDefaults: 'Dialplan Defaults seeded'
     })
   } catch (error) {
     console.error('Error seeding database:', error)

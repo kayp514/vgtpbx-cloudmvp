@@ -175,9 +175,14 @@ export function UsersTable({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => onEdit(user)} className="cursor-pointer">
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit User
+                          <DropdownMenuItem 
+                            onClick={() => onEdit(user)} 
+                            className="cursor-pointer"
+                          >
+                            <a href={`/dashboard/users/${user.auth_user_id}/settings`}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit User
+                            </a>
                           </DropdownMenuItem>
                           <DropdownMenuItem className="cursor-pointer">
                             <Mail className="mr-2 h-4 w-4" />

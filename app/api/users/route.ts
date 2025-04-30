@@ -2,8 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { DatabaseError, AuthorizationError } from '@/lib/errors'
 import { auth } from '@tern-secure/nextjs/server'
 import { 
-  getUserDetailsByUid, 
-  getPbxUserDetails 
+  getUserDetailsByUid
 } from '@/lib/db/q'
 import { NextApiRequest } from 'next'
 
@@ -30,17 +29,11 @@ export async function GET(request: NextApiRequest) {
       )
     }
 
-    const pbxUser = await getPbxUserDetails(uid)
-    if (!pbxUser) {
-      //throw new DatabaseError('PBX user not found')
-      return NextResponse.json({ success: false, error: "PBX user not found" }, { status: 404 })
-    }
-
     return NextResponse.json({
       success: true,
       data: {
-        authUser: userDetails.authUser,
-        pbxUser,
+        authUser: userDetails.authUser, 
+        pbxUser: userDetails.pbxUser,
         schemaName: userDetails.schemaName
       }
     })

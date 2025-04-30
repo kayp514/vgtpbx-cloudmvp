@@ -1,6 +1,7 @@
 generator client {
   provider = "prisma-client-js"
   previewFeatures = ["multiSchema"]
+  output = "./generated/client"
 }
 
 datasource db {
@@ -1201,6 +1202,27 @@ model pbx_devices {
   @@index([profile_id_id], map: "pbx_devices_profile_id_id_d05f3c63")
   @@index([user_id_id], map: "pbx_devices_user_id_id_bd7443ea")
   @@index([vendor_id], map: "pbx_devices_vendor_id_63e85b1c")
+
+  @@schema("vgtpbx_tenant")
+}
+
+model pbx_dialplan_defaults {
+  id                   String                 @id @db.Uuid
+  app_id               String                 @db.Uuid
+  context              String?                @db.VarChar(128)
+  category             String?                @db.VarChar(32)
+  name                 String?                @db.VarChar(64)
+  number               String?                @db.VarChar(128)
+  destination          String                 @db.VarChar(8)
+  dp_continue          String                 @db.VarChar(8)
+  xml                  String?
+  sequence             Decimal                @db.Decimal(3, 0)
+  enabled              String                 @db.VarChar(8)
+  description          String?                @db.VarChar(254)
+  created              DateTime?              @db.Timestamptz(6)
+  updated              DateTime?              @db.Timestamptz(6)
+  synchronised         DateTime?              @db.Timestamptz(6)
+  updated_by           String                 @db.VarChar(64)
 
   @@schema("vgtpbx_tenant")
 }

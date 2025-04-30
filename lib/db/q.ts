@@ -6,7 +6,10 @@ import type {
   ExtensionUser,
   ExtensionCreateInput,
   ExtensionUserCreateInput,
+  AuthUserFull,
+  PbxUserUpdateInput
 } from '@/lib/db/types'
+import { DatabaseError } from '@/lib/errors'
 import crypto from 'crypto'
 
 import { 
@@ -195,6 +198,7 @@ export async function getFullUserInfo(uid: string) {
 export async function getPbxExtensions(uid: string, options?: {
   extensionId?: string;
   extension?: string;
+  domainUuid?: string; 
   includeDisabled?: boolean;
 }) {
   try {
@@ -209,6 +213,9 @@ export async function getPbxExtensions(uid: string, options?: {
     
     if (options?.extensionId) {
       whereConditions.push(`e.id = '${options.extensionId}'`);
+    }
+    if (options?.domainUuid) {
+      whereConditions.push(`e.domain_uuid = '${options.domainUuid}'`);
     }
     if (options?.extension) {
       whereConditions.push(`e.extension = '${options.extension}'`);
@@ -495,4 +502,249 @@ export async function getDirectoryExtension(extensionNumber: string, domain: str
     console.error('Error getting directory extension:', error);
     throw new Error('Failed to get directory extension');
   }
+}
+
+/**
+ * Update auth_user information
+ */
+export async function updateAuthUser(uid: string, data: any) {
+  try {
+    const userMapping = await prisma.auth_user_mapping.findUnique({
+      where: { uid },
+      include: {
+        user: true,
+      }
+    });
+
+    if (!userMapping) {
+      throw new Error('User mapping not found');
+    }
+
+    // Update auth_user
+    const updatedAuthUser = await prisma.auth_user.update({
+      where: { uid: userMapping.user.uid },
+      data: {
+        displayName: data.displayName,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        isAdmin: data.isAdmin,
+        isSuperuser: data.isSuperuser,
+        isStaff: data.isStaff,
+        updatedAt: new Date(),
+      },
+    });
+
+    return {
+      success: true,
+      user: updatedAuthUser
+    };
+  } catch (error) {
+    console.error('Error updating auth user:', error);
+    throw new Error('Failed to update auth user');
+  }
+}
+
+/**
+ * Update PBX user information
+ */
+export async function updatePbxUser(uid: string, data: PbxUserUpdateInput) {
+  try {
+    const userMapping = await prisma.auth_user_mapping.findUnique({
+      where: { uid },
+      include: {
+        tenant: true
+      }
+    });
+
+    if (!userMapping) {
+      throw new Error('User mapping not found');
+    }
+
+    // Update pbx_user in the tenant's schema
+    const updatedPbxUser = await prisma.$queryRaw<PbxUserFull[]>`
+      UPDATE ${Prisma.raw(`"${userMapping.schemaName}"`)}."pbx_users"
+      SET 
+        username = ${data.username || null},
+        email = ${data.email || null},
+        disabled = ${data.disabled || false},
+        updated = CURRENT_TIMESTAMP,
+        updated_by = ${uid}
+      WHERE auth_user_id = ${uid}
+      RETURNING *
+    `;
+
+    return {
+      success: true,
+      user: updatedPbxUser[0]
+    };
+  } catch (error) {
+    console.error('Error updating PBX user:', error);
+    throw new Error('Failed to update PBX user');
+  }
+}
+
+/**
+ * Update user details
+ */
+export async function updateUserDetails(uid: string, data: any) {
+  try {
+    const userMapping = await prisma.auth_user_mapping.findUnique({
+      where: { uid },
+      include: {
+        user: true,
+        tenant: true
+      }
+    });
+
+    if (!userMapping) {
+      throw new Error('User mapping not found');
+    }
+
+    // Start a transaction to update both auth_user and pbx_user
+    const [updatedAuthUser, updatedPbxUser] = await prisma.$transaction([
+      // Update auth_user
+      prisma.auth_user.update({
+        where: { uid: userMapping.user.uid },
+        data: {
+          displayName: data.auth_user?.displayName,
+          firstName: data.auth_user?.firstName,
+          lastName: data.auth_user?.lastName,
+          isAdmin: data.auth_user?.isAdmin,
+          isSuperuser: data.auth_user?.isSuperuser,
+          isStaff: data.auth_user?.isStaff,
+        },
+      }),
+      // Update pbx_user
+      prisma.$queryRaw`
+        UPDATE ${Prisma.raw(`"${userMapping.schemaName}"`)}."pbx_users"
+        SET 
+          username = ${data.username || null},
+          email = ${data.email || null},
+          status = ${data.status || null},
+          disabled = ${data.disabled || false},
+          department = ${data.department || null},
+          updated = CURRENT_TIMESTAMP,
+          updatedBy = ${uid}
+        WHERE auth_user_id = ${uid}
+        RETURNING *
+      `
+    ]);
+
+    return {
+      authUser: {
+        user: updatedAuthUser
+      },
+      pbxUser: updatedPbxUser[0],
+      schemaName: userMapping.schemaName
+    };
+  } catch (error) {
+    console.error('Error updating user details:', error);
+    throw new DatabaseError('Failed to update user details');
+  }
+}
+
+
+export async function getDialplanByContext(params: {
+  callerContext: string;
+  hostname: string;
+  destinationNumber?: string;
+  contextType?: 'single' | 'multi';
+}) {
+  const { callerContext, hostname, destinationNumber, contextType } = params;
+  
+  if (callerContext === 'public' && contextType === 'single' && destinationNumber) {
+    return await prisma.pbx_dialplans.findMany({
+      where: {
+        OR: [
+          {
+            category: 'Inbound route',
+            xml: { not: null },
+            number: destinationNumber
+          },
+          {
+            context: { contains: 'public' },
+            domain_id: null
+          }
+        ],
+        AND: [
+          {
+            OR: [
+              { hostname },
+              { hostname: null }
+            ]
+          },
+          { enabled: true }
+        ]
+      },
+      orderBy: { sequence: 'asc' },
+      select: { xml: true }
+    });
+  }
+
+  // For public or @ contexts
+  if (callerContext === 'public' || callerContext.includes('@')) {
+    return await prisma.pbx_dialplans.findMany({
+      where: {
+        OR: [
+          { hostname },
+          { hostname: null }
+        ],
+        xml: { not: null },
+        context: callerContext,
+        enabled: true
+      },
+      orderBy: { sequence: 'asc' },
+      select: { xml: true }
+    });
+  }
+
+  // Get excludes list from cache or database
+  const excludesCacheKey = `dialplanexclude:${callerContext}`;
+  let excludeList = await redis.get(excludesCacheKey);
+  
+  if (!excludeList) {
+    const excludes = await prisma.pbx_dialplan_excludes.findMany({
+      where: { domain_name: callerContext },
+      select: { app_id: true }
+    });
+    excludeList = JSON.stringify(excludes.map(e => e.app_id));
+    await redis.set(excludesCacheKey, excludeList);
+  }
+
+  const excludeIds = JSON.parse(excludeList);
+
+  return await prisma.pbx_dialplans.findMany({
+    where: {
+      OR: [
+        { context: callerContext },
+        { context: '${domain_name}' }
+      ],
+      AND: [
+        {
+          OR: [
+            { hostname },
+            { hostname: null }
+          ]
+        },
+        { xml: { not: null } },
+        { enabled: true },
+        ...(excludeIds.length ? [{ app_id: { notIn: excludeIds } }] : [])
+      ]
+    },
+    orderBy: { sequence: 'asc' },
+    select: { xml: true }
+  });
+}
+
+export async function getSystemVariables() {
+  return await prisma.pbx_settings.findMany({
+    where: {
+      category: 'System Variables',
+      enabled: true
+    },
+    select: {
+      name: true,
+      value: true
+    }
+  });
 }

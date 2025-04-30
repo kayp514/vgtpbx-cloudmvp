@@ -264,7 +264,7 @@ export function UsersClient({ initialUsers }: UsersClientProps) {
       />
 
       {/* User Form Dialog */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      {/*<Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>{userToEdit ? "Edit User" : "Create New User"}</DialogTitle>
@@ -280,7 +280,7 @@ export function UsersClient({ initialUsers }: UsersClientProps) {
             onCancel={() => setIsFormOpen(false)}
           />
         </DialogContent>
-      </Dialog>
+      </Dialog>*/}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

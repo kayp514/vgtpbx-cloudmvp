@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { create } from 'xmlbuilder2'
 import { prisma } from '@/lib/prisma'
 import { getTenantByDomain } from '@/lib/db/queries'
-import { getDirectoryExtension } from '@/lib/db/q'
+import { getDirectoryExtension, getDialplanByContext, getSystemVariables } from '@/lib/db/q'
 
 const genericNotFoundXml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <document type="freeswitch/xml">
@@ -137,27 +137,70 @@ async function handleDirectory(formData: FormData) {
 }
 
 async function handleDialplan(formData: FormData) {
-  const context = formData.get('Caller-Context') as string;
+  const callerContext = formData.get('Caller-Context') as string;
+  const hostname = formData.get('FreeSWITCH-Hostname') as string;
   const destinationNumber = formData.get('destination_number') as string;
 
-  if (!context || !destinationNumber) {
+  if (!callerContext || !hostname) {
     return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }
 
-  const dialplanXml = create({ version: '1.0', encoding: 'UTF-8', standalone: true })
-    .ele('document', { type: 'freeswitch/xml' })
-      .ele('section', { name: 'dialplan' })
-        .ele('context', { name: context })
-          .ele('extension', { name: 'example_extension' })
-            .ele('condition', { field: 'destination_number', expression: destinationNumber })
-              .ele('action', { application: 'bridge', data: `sofia/internal/${destinationNumber}` }).up()
-            .up()
-          .up()
-        .up()
-      .up()
-    .end({ prettyPrint: true });
+  // Determine context name and cache key
+  let callContext = callerContext || 'public';
+  let contextName = callContext;
+  
+  if (callContext === 'public' || callContext.startsWith('public@') || callContext.endsWith('.public')) {
+    contextName = 'public';
+  }
 
-  return new NextResponse(dialplanXml, { headers: { 'Content-Type': 'text/xml' } });
+  // Set up cache key
+  const contextType = process.env.PBX_XMLH_CONTEXT_TYPE as 'single' | 'multi' || 'multi';
+  const dialplanCacheKey = contextName === 'public' && contextType === 'single' 
+    ? `dialplan:${contextName}:${destinationNumber}` 
+    : `dialplan:${callContext}`;
+
+  try {
+
+    // Start building XML
+    const dialplanBuilder = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
+      .ele('document', { type: 'freeswitch/xml' })
+        .ele('section', { name: 'dialplan', description: callContext });
+
+    // Add system variables
+    const systemVars = await getSystemVariables();
+    for (const { name, value } of systemVars) {
+      dialplanBuilder.ele('variable', { name, value });
+    }
+
+    // Get dialplan entries
+    const dialplanEntries = await getDialplanByContext({
+      callerContext: callContext,
+      hostname,
+      destinationNumber,
+      contextType
+    });
+
+    if (!dialplanEntries.length) {
+      return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
+    }
+
+    // Add each dialplan entry's XML
+    for (const entry of dialplanEntries) {
+      if (entry.xml) {
+        dialplanBuilder.raw(entry.xml);
+      }
+    }
+
+    // Finalize XML
+    const finalXml = dialplanBuilder.end({ prettyPrint: true });
+    
+
+    return new NextResponse(finalXml, { headers: { 'Content-Type': 'text/xml' } });
+
+  } catch (error) {
+    console.error('Error generating dialplan:', error);
+    return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
+  }
 }
 
 async function handleConfiguration(formData: FormData) {

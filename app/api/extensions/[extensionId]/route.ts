@@ -1,33 +1,46 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@tern-secure/nextjs/server'
 import { DatabaseError, AuthorizationError } from '@/lib/errors'
-import { getPbxExtensions } from '@/lib/db/q'
+import { getPbxExtension } from '@/lib/db/q'
 
 export async function GET(
-  request: Request
+  request: Request,
+  { params }: { params: { id: string; extensionId: string } }
 ) {
   try {
     const session = await auth()
-    
     if (!session || !session.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    if (!params.extensionId) {
+      return NextResponse.json(
+        { error: 'User ID and Extension ID are required' }, 
+        { status: 400 }
+      );
+    }
+
     const uid = session.user.uid
 
-
-    // Get all extensions for the user, including disabled ones
-    const extensions = await getPbxExtensions(uid, {
-      includeDisabled: true
+    // Get specific extension by ID
+    const extension = await getPbxExtension(uid, {
+      id: params.extensionId
     });
+
+    if (!extension) {
+      return NextResponse.json(
+        { error: 'Extension not found' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      data: extensions
+      data: extension
     });
 
   } catch (error) {
-    console.error('Error fetching user extensions:', error);
+    console.error('Error fetching extension:', error);
     
     if (error instanceof AuthorizationError) {
       return NextResponse.json(
