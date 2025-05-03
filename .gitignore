@@ -48,6 +48,10 @@ next-env.d.ts
 
 DjangoPBX
 
+fusionpbx
+
+vogat-eslserver
+
 .github
 
 .prd-rules

@@ -29,6 +29,14 @@ BigInt.prototype.toJSON = function() {
     return this.toString();
 };
 
+interface DialplanParams {
+  callerContext: string;
+  hostname: string;
+  destinationNumber?: string;
+  domainName?: string;
+}
+
+
 /**
  * Get user details from Firebase UID, including tenant and account information
  */
@@ -478,6 +486,7 @@ export async function getDirectoryExtension(extensionNumber: string, domain: str
         e.user_record,
         e.toll_allow,
         e.accountcode,
+        e.domain_uuid,
         d.name as domain_name
       FROM ${Prisma.raw(`"${schemaName}"`)}."pbx_extensions" e
       JOIN ${Prisma.raw(`"${schemaName}"`)}."pbx_domains" d 
@@ -641,110 +650,4 @@ export async function updateUserDetails(uid: string, data: any) {
     console.error('Error updating user details:', error);
     throw new DatabaseError('Failed to update user details');
   }
-}
-
-
-export async function getDialplanByContext(params: {
-  callerContext: string;
-  hostname: string;
-  destinationNumber?: string;
-  contextType?: 'single' | 'multi';
-}) {
-  const { callerContext, hostname, destinationNumber, contextType } = params;
-  
-  if (callerContext === 'public' && contextType === 'single' && destinationNumber) {
-    return await prisma.pbx_dialplans.findMany({
-      where: {
-        OR: [
-          {
-            category: 'Inbound route',
-            xml: { not: null },
-            number: destinationNumber
-          },
-          {
-            context: { contains: 'public' },
-            domain_id: null
-          }
-        ],
-        AND: [
-          {
-            OR: [
-              { hostname },
-              { hostname: null }
-            ]
-          },
-          { enabled: true }
-        ]
-      },
-      orderBy: { sequence: 'asc' },
-      select: { xml: true }
-    });
-  }
-
-  // For public or @ contexts
-  if (callerContext === 'public' || callerContext.includes('@')) {
-    return await prisma.pbx_dialplans.findMany({
-      where: {
-        OR: [
-          { hostname },
-          { hostname: null }
-        ],
-        xml: { not: null },
-        context: callerContext,
-        enabled: true
-      },
-      orderBy: { sequence: 'asc' },
-      select: { xml: true }
-    });
-  }
-
-  // Get excludes list from cache or database
-  const excludesCacheKey = `dialplanexclude:${callerContext}`;
-  let excludeList = await redis.get(excludesCacheKey);
-  
-  if (!excludeList) {
-    const excludes = await prisma.pbx_dialplan_excludes.findMany({
-      where: { domain_name: callerContext },
-      select: { app_id: true }
-    });
-    excludeList = JSON.stringify(excludes.map(e => e.app_id));
-    await redis.set(excludesCacheKey, excludeList);
-  }
-
-  const excludeIds = JSON.parse(excludeList);
-
-  return await prisma.pbx_dialplans.findMany({
-    where: {
-      OR: [
-        { context: callerContext },
-        { context: '${domain_name}' }
-      ],
-      AND: [
-        {
-          OR: [
-            { hostname },
-            { hostname: null }
-          ]
-        },
-        { xml: { not: null } },
-        { enabled: true },
-        ...(excludeIds.length ? [{ app_id: { notIn: excludeIds } }] : [])
-      ]
-    },
-    orderBy: { sequence: 'asc' },
-    select: { xml: true }
-  });
-}
-
-export async function getSystemVariables() {
-  return await prisma.pbx_settings.findMany({
-    where: {
-      category: 'System Variables',
-      enabled: true
-    },
-    select: {
-      name: true,
-      value: true
-    }
-  });
 }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { create } from 'xmlbuilder2'
 import { prisma } from '@/lib/prisma'
-import { getTenantByDomain } from '@/lib/db/queries'
-import { getDirectoryExtension, getDialplanByContext, getSystemVariables } from '@/lib/db/q'
+import { getDirectoryExtension } from '@/lib/db/q'
+import { getDialplanByContext, getSystemVariables } from '@/lib/db/dialplan'
+import { logToFreeswitchConsole } from '@/lib/switchLogger'
 
 const genericNotFoundXml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <document type="freeswitch/xml">
@@ -22,11 +23,15 @@ async function handleDirectory(formData: FormData) {
   const purpose = formData.get('purpose') as string;
   const domainKeyValue = formData.get('key_value') as string;
   const profileName = formData.get('profile') as string;
+  const sip_auth_method = formData.get('sip_auth_method') as string;
+  const from_user = formData.get('from_user') as string;
 
   if (purpose === 'network-list') {
     console.log(`Handling Directory Request for network-list purpose (key: ${domainKeyValue}) - returning structured not found.`);
     return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
-  } else if (purpose === 'gateways') {
+  }
+  
+  if (purpose === 'gateways') {
     console.log(`Handling Directory Request for gateways purpose (profile: ${profileName}) - returning structured not found.`);
     return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }
@@ -37,6 +42,11 @@ async function handleDirectory(formData: FormData) {
 
   if (!user || !domain) {
     console.log('Missing user or domain for standard directory lookup.');
+    await logToFreeswitchConsole('INFO', `XML Directory: Missing user or domain for standard directory lookup.`);
+    return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
+  }
+
+  if (user === '*97' || user === '') {
     return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }
 
@@ -45,7 +55,20 @@ async function handleDirectory(formData: FormData) {
 
     if (!extension) {
       console.log(`Extension '${user}' not found in domain '${domain}'`);
+      await logToFreeswitchConsole('INFO', `XML Directory: Extension '${user}' not found in domain '${domain}'`);
       return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
+    }
+
+    const userContext = extension.user_context || domain
+    const presenceId = `${user}@${domain}`
+
+    let dialString = ""
+    if (extension.do_not_disturb === "true") {
+      dialString = "error/user_busy";
+    } else if (extension.dialstring) {
+      dialString = extension.dialstring
+    } else {
+      dialString = `{sip_invite_domain=${domain},presence_id=${presenceId}}${extension.dial_string || '${sofia_contact(*/${user}@${domain})}'}`
     }
 
     const directoryXmlBuilder = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
@@ -59,9 +82,36 @@ async function handleDirectory(formData: FormData) {
 
     // Add parameters
     const params = directoryXmlBuilder.ele('params');
+
+    switch (sip_auth_method) {
+      case 'REGISTER':
+        params.ele('param', { name: 'password', value: extension.password });
+
+        if (extension.extension_type === 'virtual') {
+          params.ele('param', { name: 'auth-acl', value: `virtual.${extension.id}` });
+        }
+        break;
+      case 'INVITE':
+        const presenceId = `${user}@${domain}`;
+        let dialString = "";
+
+        if (extension.do_not_disturb === "true") {
+          dialString = "error/user_busy";
+        } else if (extension.dialstring) {
+          dialString = extension.dialstring;
+        } else {
+          dialString = `{sip_invite_domain=${domain},presence_id=${presenceId}}${extension.dial_string || '${sofia_contact(*/${user}@${domain})}'}`
+        }
+        params.ele('param', { name: 'dial-string', value: dialString });
+        break;
+
+      default:
+        params.ele('param', { name: 'password', value: extension.password });
+        params.ele('param', { name: 'dial-string', value: `{sip_invite_domain=${domain}}${extension.dial_string || '${sofia_contact(*/${user}@${domain})}'}`});
+    }
     
     // Add essential parameters
-    params.ele('param', { name: 'password', value: extension.password });
+    params.ele('param', { name: 'jsonrpc-allowed-methods', value: 'verto' });
     
     // Add optional parameters if they exist
     if (extension.accountcode) {
@@ -73,131 +123,172 @@ async function handleDirectory(formData: FormData) {
     if (extension.user_record) {
       params.ele('param', { name: 'user_record', value: extension.user_record });
     }
+    if (extension.mwi_account) {
+      params.ele('param', { name: 'MWI-Account', value: extension.mwi_account });
+    }
 
     params.up();
 
     // Add variables
     const variables = directoryXmlBuilder.ele('variables');
 
-    // Add user context
-    variables.ele('variable', { 
-      name: 'user_context', 
-      value: extension.user_context || domain 
+    const coreVariables = {
+      'user_context': extension.user_context || domain,
+      'domain_name': domain,
+      'domain_uuid': extension.domain_uuid,
+      'extension_uuid': extension.id,
+      'call_timeout': extension.call_timeout?.toString() || '30',
+      'caller_id_name': user,
+      'caller_id_number': user,
+      'presence_id': `${user}@${domain}`
+    };
+
+    Object.entries(coreVariables).forEach(([name, value]) => {
+      variables.ele('variable', { name, value });
     });
 
-    // Add caller ID information
-    if (extension.effective_caller_id_name) {
-      variables.ele('variable', { 
-        name: 'effective_caller_id_name', 
-        value: extension.effective_caller_id_name 
-      });
+    const conditionalVariables = {
+      'effective_caller_id_name': extension.effective_caller_id_name,
+      'effective_caller_id_number': extension.effective_caller_id_number,
+      'outbound_caller_id_name': extension.outbound_caller_id_name,
+      'outbound_caller_id_number': extension.outbound_caller_id_number,
+      'emergency_caller_id_name': extension.emergency_caller_id_name,
+      'emergency_caller_id_number': extension.emergency_caller_id_number,
+      'directory-visible': extension.directory_visible,
+      'directory-exten-visible': extension.directory_exten_visible,
+      'limit_max': extension.limit_max,
+      'limit_destination': extension.limit_destination,
+      'call_group': extension.call_group,
+      'call_screen_enabled': extension.call_screen_enabled,
+      'hold_music': extension.hold_music,
+      'toll_allow': extension.toll_allow,
+      'accountcode': extension.accountcode
+    };
+
+
+    for (const [name, value] of Object.entries(conditionalVariables)) {
+      if (value !== undefined && value !== null && value !== '') {
+        variables.ele('variable', { name, value: value.toString() });
+      }
     }
-    if (extension.effective_caller_id_number) {
-      variables.ele('variable', { 
-        name: 'effective_caller_id_number', 
-        value: extension.effective_caller_id_number 
-      });
+
+    // Add forward settings
+    if (extension.forward_all_enabled === 'true') {
+      variables.ele('variable', { name: 'forward_all_enabled', value: 'true' });
+      variables.ele('variable', { name: 'forward_all_destination', value: extension.forward_all_destination });
     }
-    if (extension.outbound_caller_id_name) {
-      variables.ele('variable', { 
-        name: 'outbound_caller_id_name', 
-        value: extension.outbound_caller_id_name 
-      });
+
+    if (extension.forward_busy_enabled === 'true') {
+      variables.ele('variable', { name: 'forward_busy_enabled', value: 'true' });
+      variables.ele('variable', { name: 'forward_busy_destination', value: extension.forward_busy_destination });
     }
-    if (extension.outbound_caller_id_number) {
-      variables.ele('variable', { 
-        name: 'outbound_caller_id_number', 
-        value: extension.outbound_caller_id_number 
-      });
+
+    if (extension.forward_no_answer_enabled === 'true') {
+      variables.ele('variable', { name: 'forward_no_answer_enabled', value: 'true' });
+      variables.ele('variable', { name: 'forward_no_answer_destination', value: extension.forward_no_answer_destination });
     }
-    if (extension.call_group) {
-      variables.ele('variable', { 
-        name: 'call_group', 
-        value: extension.call_group 
-      });
+
+    // Add DND status
+    if (extension.do_not_disturb === 'true') {
+      variables.ele('variable', { name: 'do_not_disturb', value: 'true' });
     }
-    if (extension.call_timeout) {
-      variables.ele('variable', { 
-        name: 'call_timeout', 
-        value: extension.call_timeout.toString() 
-      });
-    }
+
 
     variables.up();
 
     const directoryXml = directoryXmlBuilder.up().up().up().up().up().up().end({ prettyPrint: true });
 
+    console.log(directoryXml);
+
+    await logToFreeswitchConsole('INFO', `XML Directory: Generated XML '${directoryXml}' for user '${user}' in domain '${domain}'`);
+    
     return new NextResponse(directoryXml, { headers: { 'Content-Type': 'text/xml' } });
 
   } catch (error) {
     console.error('Error during directory lookup:', error);
-    const errorXml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?><document type="freeswitch/xml"><section name="result"><result status="error" data="Server error during directory lookup" /></section></document>`;
+    await logToFreeswitchConsole('ERROR', `XML Directory: Error during lookup for '${user}@${domain}': ${error instanceof Error ? error.message : String(error)}`);
+    
+    const errorXml = 
+    `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+      <document type="freeswitch/xml">
+        <section name="result">
+          <result status="error" data="Server error during directory lookup" />
+        </section>
+      </document>`;
+
     return new NextResponse(errorXml, { status: 500, headers: { 'Content-Type': 'text/xml' } });
   }
 }
+
 
 async function handleDialplan(formData: FormData) {
   const callerContext = formData.get('Caller-Context') as string;
   const hostname = formData.get('FreeSWITCH-Hostname') as string;
   const destinationNumber = formData.get('destination_number') as string;
+  const sipFromHost = formData.get('sip_from_host') as string;
+
 
   if (!callerContext || !hostname) {
     return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }
 
-  // Determine context name and cache key
-  let callContext = callerContext || 'public';
-  let contextName = callContext;
+  const effectiveContext = sipFromHost || callerContext;
   
-  if (callContext === 'public' || callContext.startsWith('public@') || callContext.endsWith('.public')) {
-    contextName = 'public';
-  }
-
-  // Set up cache key
-  const contextType = process.env.PBX_XMLH_CONTEXT_TYPE as 'single' | 'multi' || 'multi';
-  const dialplanCacheKey = contextName === 'public' && contextType === 'single' 
-    ? `dialplan:${contextName}:${destinationNumber}` 
-    : `dialplan:${callContext}`;
-
   try {
 
-    // Start building XML
-    const dialplanBuilder = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
-      .ele('document', { type: 'freeswitch/xml' })
-        .ele('section', { name: 'dialplan', description: callContext });
+    await logToFreeswitchConsole('INFO', `XML Dialplan: Request for context '${effectiveContext}', dest: '${destinationNumber || 'N/A'}', host: '${hostname}'`);
 
-    // Add system variables
     const systemVars = await getSystemVariables();
-    for (const { name, value } of systemVars) {
-      dialplanBuilder.ele('variable', { name, value });
-    }
 
-    // Get dialplan entries
     const dialplanEntries = await getDialplanByContext({
-      callerContext: callContext,
+      callerContext,
       hostname,
       destinationNumber,
-      contextType
+      sipFromHost
     });
 
     if (!dialplanEntries.length) {
+      await logToFreeswitchConsole('INFO', `XML Dialplan: No matching dialplan rules or system variables found for context '${effectiveContext}'`);
       return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
     }
 
-    // Add each dialplan entry's XML
-    for (const entry of dialplanEntries) {
-      if (entry.xml) {
-        dialplanBuilder.raw(entry.xml);
-      }
-    }
+    const docBuilder = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
+      .ele('document', { type: 'freeswitch/xml' });
 
-    // Finalize XML
-    const finalXml = dialplanBuilder.end({ prettyPrint: true });
     
+    const sectionBuilder = docBuilder.ele('section', { name: 'dialplan', description: `Dialplan for ${effectiveContext}` });
+
+
+      systemVars.forEach(v => {
+        const name = typeof v.name === 'string' ? v.name : '';
+        const value = typeof v.value === 'string' ? v.value : '';
+        if (name) {
+            sectionBuilder.ele('variable', { name, value });
+        }
+      });
+
+      dialplanEntries.forEach(entry => {
+        if (entry.xml) {
+          try {
+            const xmlFragment = create(entry.xml);
+            sectionBuilder.import(xmlFragment);
+          } catch (parseError) {
+            console.error("XML Dialplan: Failed to parse or import raw XML fragment:", parseError, "\nFragment:", entry.xml);
+            sectionBuilder.com(` Failed to import dialplan entry: ${parseError} `);
+          }
+        }
+      });
+
+    const finalXml = docBuilder.end({ prettyPrint: true }); // Use prettyPrint: false for production
+    console.log('Generated Dialplan XML:', finalXml);
+
+    await logToFreeswitchConsole('DEBUG', `XML Dialplan: Generated XML for context '${effectiveContext}':\n${finalXml}`);
 
     return new NextResponse(finalXml, { headers: { 'Content-Type': 'text/xml' } });
 
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await logToFreeswitchConsole('ERROR', `XML Dialplan: Error generating dialplan for context '${effectiveContext}': ${errorMessage}`);
     console.error('Error generating dialplan:', error);
     return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }

@@ -1,7 +1,6 @@
 generator client {
   provider = "prisma-client-js"
   previewFeatures = ["multiSchema"]
-  output = "./generated/client"
 }
 
 datasource db {
@@ -1215,9 +1214,10 @@ model pbx_dialplan_defaults {
   number               String?                @db.VarChar(128)
   destination          String                 @db.VarChar(8)
   dp_continue          String                 @db.VarChar(8)
+  dp_enabled           String                 @db.VarChar(8)
   xml                  String?
   sequence             Decimal                @db.Decimal(3, 0)
-  enabled              String                 @db.VarChar(8)
+  enabled              String?                @db.VarChar(8)
   description          String?                @db.VarChar(254)
   created              DateTime?              @db.Timestamptz(6)
   updated              DateTime?              @db.Timestamptz(6)

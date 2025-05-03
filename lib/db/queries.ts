@@ -57,7 +57,6 @@ import {
 } from '@/lib/db/types'
 
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
 import { createClientSchema, schemaExists } from "./create-client-schema"
 import { clientSchemaQueries } from "./sql"
 
@@ -93,6 +92,14 @@ interface VerifyAuthUserResult {
     };
   } | null;
   error?: string;
+}
+
+
+interface DialplanParams {
+  callerContext: string;
+  hostname: string;
+  destinationNumber?: string;
+  domain?: string;
 }
 
 

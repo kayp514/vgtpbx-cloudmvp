@@ -1,12 +1,14 @@
-import { PrismaClient } from '@/prisma/generated/client'
+import { PrismaClient } from '@prisma/client'
 import { DOMAIN_DEFAULTS, TENANT_DEFAULTS } from '../lib/db/types'
 import {
   defaultAccessControlNodes,
   defaultAccessControls,
   defaultSipProfilesFull
 } from '../lib/db/switch-data'
-// Import the dialplan defaults JSON data
-import dialplanDefaultsData from '../lib/db/pbx_dialplan_defaults_202504281444.json' // Adjust path if necessary
+import dialplanDefaultsData from '../lib/resources/pbx_dialplan_defaults.json'
+import varsDefaultsData from '../lib/resources/pbx_vars.json'
+import modulesDefaultsData from '../lib/resources/pbx_modules.json'
+import defaultSettingsData from '../lib/resources/pbx_default_settings.json'
 
 const prisma = new PrismaClient()
 
@@ -143,9 +145,7 @@ async function seed() {
       });
     }
 
-    // Seed SIP Profiles and related data
     for (const profileData of defaultSipProfilesFull) {
-      // First create the SIP Profile
       const sipProfile = await prisma.pbx_sip_profiles.upsert({
         where: { id: profileData.id },
         update: {
@@ -170,7 +170,6 @@ async function seed() {
         }
       });
 
-      // Then create its domains
       for (const domainData of profileData.pbx_sip_profile_domains) {
         await prisma.pbx_sip_profile_domains.upsert({
           where: { id: domainData.id },
@@ -197,7 +196,6 @@ async function seed() {
         });
       }
 
-      // Finally create its settings
       for (const settingData of profileData.pbx_sip_profile_settings) {
         await prisma.pbx_sip_profile_settings.upsert({
           where: { id: settingData.id },
@@ -234,17 +232,17 @@ async function seed() {
         update: {
           app_id: dialplanDefault.app_id,
           context: dialplanDefault.context,
-          category: dialplanDefault.category,
+          category: 'Default',
           name: dialplanDefault.name,
           number: dialplanDefault.number,
-          destination: dialplanDefault.destination === 'true', // Convert string to boolean
-          dp_continue: dialplanDefault.dp_continue === 'true', // Convert string to boolean
-          dp_enabled: dialplanDefault.dp_enabled === 'true', // Convert string to boolean
+          destination: dialplanDefault.destination,
+          dp_continue: dialplanDefault.dp_continue,
+          dp_enabled: dialplanDefault.dp_enabled,
           xml: dialplanDefault.xml,
           sequence: dialplanDefault.sequence,
-          enabled: dialplanDefault.enabled === 'true', // Convert string to boolean
+          enabled: 'true',
           description: dialplanDefault.description,
-          synchronised: dialplanDefault.synchronised ? new Date(dialplanDefault.synchronised) : null,
+          synchronised: new Date(),
           updated: new Date(dialplanDefault.updated),
           updated_by: dialplanDefault.updated_by,
         },
@@ -252,23 +250,133 @@ async function seed() {
           id: dialplanDefault.id,
           app_id: dialplanDefault.app_id,
           context: dialplanDefault.context,
-          category: dialplanDefault.category,
+          category: 'Default',
           name: dialplanDefault.name,
           number: dialplanDefault.number,
-          destination: dialplanDefault.destination === 'true', // Convert string to boolean
-          dp_continue: dialplanDefault.dp_continue === 'true', // Convert string to boolean
-          dp_enabled: dialplanDefault.dp_enabled === 'true', // Convert string to boolean
+          destination: dialplanDefault.destination,
+          dp_continue: dialplanDefault.dp_continue, 
+          dp_enabled: dialplanDefault.dp_enabled,
           xml: dialplanDefault.xml,
           sequence: dialplanDefault.sequence,
-          enabled: dialplanDefault.enabled === 'true', // Convert string to boolean
+          enabled: 'true',
           description: dialplanDefault.description,
           created: new Date(dialplanDefault.created),
           updated: new Date(dialplanDefault.updated),
-          synchronised: dialplanDefault.synchronised ? new Date(dialplanDefault.synchronised) : null,
+          synchronised: new Date(),
           updated_by: dialplanDefault.updated_by,
         }
       });
     }
+
+    // seed variables
+
+    for (const varsData of varsDefaultsData.pbx_vars) {
+      await prisma.pbx_vars.upsert({
+        where: { id: varsData.id },
+        update: {
+          id: varsData.id,
+          category: varsData.category,
+          name: varsData.name,
+          value: varsData.value,
+          command: varsData.command,
+          hostname: varsData.hostname,
+          enabled: varsData.enabled,
+          sequence: varsData.sequence,
+          description: varsData.description,
+          updated: new Date(),
+          synchronised: varsData.synchronised ? new Date(varsData.synchronised) : null,
+          updated_by: varsData.updated_by,
+        },
+        create: {
+          id: varsData.id,
+          category: varsData.category,
+          name: varsData.name,
+          value: varsData.value,
+          command: varsData.command,
+          hostname: varsData.hostname,
+          enabled: varsData.enabled,
+          sequence: varsData.sequence,
+          description: varsData.description,
+          created: new Date(varsData.created),
+          updated: new Date(varsData.updated),
+          synchronised: varsData.synchronised ? new Date(varsData.synchronised) : null,
+          updated_by: varsData.updated_by,
+        }
+      });
+    }
+
+    // seed Modules
+
+    for (const moduleDefault of modulesDefaultsData.pbx_modules) {
+      await prisma.pbx_modules.upsert({
+        where: { id: moduleDefault.id },
+        update: {
+          id: moduleDefault.id,
+          label: moduleDefault.label,
+          name: moduleDefault.name,
+          category: moduleDefault.category,
+          sequence: moduleDefault.sequence,
+          enabled: moduleDefault.enabled,
+          default_enabled: moduleDefault.default_enabled,
+          description: moduleDefault.description,
+          updated: new Date(moduleDefault.updated),
+          synchronised: moduleDefault.synchronised ? new Date(moduleDefault.synchronised) : null,
+          updated_by: moduleDefault.updated_by
+        },
+        create: {
+          id: moduleDefault.id,
+          label: moduleDefault.label,
+          name: moduleDefault.name,
+          category: moduleDefault.category,
+          sequence: moduleDefault.sequence,
+          enabled: moduleDefault.enabled,
+          default_enabled: moduleDefault.default_enabled,
+          description: moduleDefault.description,
+          created: new Date(moduleDefault.created),
+          updated: new Date(moduleDefault.updated),
+          synchronised: moduleDefault.synchronised ? new Date(moduleDefault.synchronised) : null,
+          updated_by: moduleDefault.updated_by
+        }
+      });
+    }
+
+    // seed default settings
+
+    for (const settingDefault of defaultSettingsData.pbx_default_settings) {
+      await prisma.pbx_default_settings.upsert({
+        where: { id: settingDefault.id },
+        update: {
+          id: settingDefault.id,
+          app_uuid: settingDefault.app_uuid,
+          category: settingDefault.category,
+          subcategory: settingDefault.subcategory,
+          value_type: settingDefault.value_type,
+          value: settingDefault.value,
+          sequence: settingDefault.sequence,
+          enabled: settingDefault.enabled,
+          description: settingDefault.description,
+          updated: new Date(settingDefault.updated),
+          synchronised: settingDefault.synchronised ? new Date(settingDefault.synchronised) : null,
+          updated_by: settingDefault.updated_by
+        },
+        create: {
+          id: settingDefault.id,
+          app_uuid: settingDefault.app_uuid,
+          category: settingDefault.category,
+          subcategory: settingDefault.subcategory,
+          value_type: settingDefault.value_type,
+          value: settingDefault.value,
+          sequence: settingDefault.sequence,
+          enabled: settingDefault.enabled,
+          description: settingDefault.description,
+          created: new Date(settingDefault.created),
+          updated: new Date(settingDefault.updated),
+          synchronised: settingDefault.synchronised ? new Date(settingDefault.synchronised) : null,
+          updated_by: settingDefault.updated_by
+        }
+      });
+    }
+
 
     console.log('Seeded:', { 
       defaultTenant, 
@@ -278,7 +386,10 @@ async function seed() {
       domainMapping,
       accessControls: 'Access Controls seeded',
       sipProfiles: 'SIP Profiles seeded',
-      dialplanDefaults: 'Dialplan Defaults seeded'
+      dialplanDefault: 'Dialplan Defaults seeded',
+      varsData: 'Variables seeded',
+      modulesDefault: 'Modules seeded',
+      settingDefault: 'Default Settings seeded',
     })
   } catch (error) {
     console.error('Error seeding database:', error)
