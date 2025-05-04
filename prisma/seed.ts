@@ -1,402 +1,129 @@
-import { PrismaClient } from '@prisma/client'
-import { DOMAIN_DEFAULTS, TENANT_DEFAULTS } from '../lib/db/types'
-import {
-  defaultAccessControlNodes,
-  defaultAccessControls,
-  defaultSipProfilesFull
-} from '../lib/db/switch-data'
-import dialplanDefaultsData from '../lib/resources/pbx_dialplan_defaults.json'
-import varsDefaultsData from '../lib/resources/pbx_vars.json'
-import modulesDefaultsData from '../lib/resources/pbx_modules.json'
-import defaultSettingsData from '../lib/resources/pbx_default_settings.json'
+import { PrismaClient, Prisma } from '@prisma/client'
+import fs from 'fs'
+import path from 'path'
+import { Decimal } from '@prisma/client/runtime/library'
 
 const prisma = new PrismaClient()
 
-// Function to generate a 9-digit account ID
-function generateAccountId(): string {
-  // Generate a random 9-digit number and pad with zeros if needed
-  const accountId = Math.floor(100000000 + Math.random() * 900000000).toString()
-  return accountId
+const TARGET_DOMAIN = 'target-domain'
+const JSON_FILE_PATH = path.join(__dirname, '../lib/resources/pbx_dialplan_by_context.json')
+
+interface PbxDialplanJsonEntry {
+    id: string
+    app_id: string
+    hostname: string | null
+    context: string
+    category: string | null
+    name: string | null
+    number: string | null
+    destination: string         
+    dp_continue: string
+    xml: string | null
+    sequence: number
+    enabled: string
+    description: string | null
+    created: string
+    updated: string
+    updated_by: string
+    domain_id_id?: string
 }
 
-const accountId = generateAccountId()
+async function seedDomainDialplans() {
+  console.log(`Starting dialplan seeding for domain: ${TARGET_DOMAIN}...`);
 
-async function seed() {
   try {
-    // Create default tenant
-    const defaultTenant = await prisma.auth_tenant.upsert({
-      where: { accountId: accountId },
-      update: {},
-      create: {
-        ...TENANT_DEFAULTS,
-        accountId,
-        name: 'default',
-        domain: 'vogat.lifesprintcare.ca',
-        description: 'Default tenant for system',
-        plan: 'system',
-        maxUsers: 1005,
-        disabled: false
+    // Find the domain mapping
+    const domainMapping = await prisma.domain_mapping.findUnique({
+      where: { fullDomain: TARGET_DOMAIN },
+      select: {
+        fullDomainUid: true,
+        fullDomain: true,
+        tenantId: true
       },
-    })
+    });
 
-    const defaultDomain = await prisma.pbx_domains.upsert({
-      where: { name: 'vogat.lifesprintcare.ca' },
-      update: {},
-      create: {
-        ...DOMAIN_DEFAULTS,
-        name: 'vogat.lifesprintcare.ca',
-        description: 'Default system domain',
-        tenantId: defaultTenant.id,
-      }
-    })
-
-    const defaultAdmin = await prisma.auth_user.upsert({
-      where: { email: 'admin@vogat.lifesprintcare.ca' },
-      update: {},
-      create: {
-        uid: crypto.randomUUID(),
-        email: 'admin@vogat.lifesprintcare.ca',
-        displayName: 'System Admin',
-        isSuperuser: true,
-        isAdmin: true,
-        isStaff: true,
-        emailVerified: true,
-        disabled: false,
-        tenantId: defaultTenant.id,
-        createdAt: new Date(),
-        lastSignInAt: new Date(),
-      }
-    })
-
-    const userMapping = await prisma.auth_user_mapping.upsert({
-      where: { uid: defaultAdmin.uid },
-      update: {},
-      create: {
-        uid: defaultAdmin.uid,
-        accountId: defaultTenant.accountId,
-        schemaName: 'public',
-        tenantId: defaultTenant.id,
-      }
-    })
-
-    const domainMapping = await prisma.domain_mapping.upsert({
-      where: { fullDomain: defaultDomain.name },
-      update: {},
-      create: {
-        fullDomain: defaultDomain.name,
-        fullDomainUid: defaultDomain.id,
-        tenantId: defaultTenant.id,
-      }
-    })
-
-    for (const aclData of defaultAccessControls) {
-      await prisma.pbx_access_controls.upsert({
-          where: {
-              id: aclData.id
-          },
-          update: {
-              name: aclData.name,
-              default: aclData.default,
-              description: aclData.description,
-              synchronised: aclData.synchronised ? new Date(aclData.synchronised) : null,
-              updated: new Date(),
-              updated_by: 'system',
-          },
-          create: {
-              id: aclData.id,
-              name: aclData.name,
-              default: aclData.default,
-              description: aclData.description,
-              synchronised: aclData.synchronised ? new Date(aclData.synchronised) : null,
-              created: new Date(),
-              updated: new Date(),
-              updated_by: 'system',
-          }
-      });
+    if (!domainMapping) {
+      throw new Error(`Domain mapping not found for ${TARGET_DOMAIN}`);
     }
 
-    for (const nodeData of defaultAccessControlNodes) {
-      await prisma.pbx_access_control_nodes.upsert({
-          where: {
-              id: nodeData.id
-          },
-          update: {
-              type: nodeData.type,
-              cidr: nodeData.cidr,
-              domain: nodeData.domain,
-              description: nodeData.description,
-              synchronised: nodeData.synchronised ? new Date(nodeData.synchronised) : null,
-              updated: new Date(),
-              updated_by: 'system',
-              access_control_id_id: nodeData.access_control_id_id,
-          },
-          create: {
-              id: nodeData.id,
-              type: nodeData.type,
-              cidr: nodeData.cidr,
-              domain: nodeData.domain,
-              description: nodeData.description,
-              synchronised: nodeData.synchronised ? new Date(nodeData.synchronised) : null,
-              created: new Date(),
-              updated: new Date(),
-              updated_by: 'system',
-              access_control_id_id: nodeData.access_control_id_id,
-          }
-      });
-    }
+    // Verify the domain exists in pbx_domains
+    const domain = await prisma.pbx_domains.findUnique({
+      where: { id: domainMapping.fullDomainUid }
+    });
 
-    for (const profileData of defaultSipProfilesFull) {
-      const sipProfile = await prisma.pbx_sip_profiles.upsert({
-        where: { id: profileData.id },
-        update: {
-          name: profileData.name,
-          hostname: profileData.hostname,
-          disabled: profileData.disabled,
-          description: profileData.description,
-          synchronised: profileData.synchronised ? new Date(profileData.synchronised) : null,
-          updated: new Date(),
-          updated_by: 'system',
-        },
-        create: {
-          id: profileData.id,
-          name: profileData.name,
-          hostname: profileData.hostname,
-          disabled: profileData.disabled,
-          description: profileData.description,
-          synchronised: profileData.synchronised ? new Date(profileData.synchronised) : null,
-          created: new Date(),
-          updated: new Date(),
-          updated_by: 'system',
+    if (!domain) {
+      console.log("Domain not found in pbx_domains, creating it...");
+      
+      // Create the domain if it doesn't exist
+      await prisma.pbx_domains.create({
+        data: {
+          id: domainMapping.fullDomainUid,
+          name: domainMapping.fullDomain,
+          tenantId: domainMapping.tenantId,
+          updatedBy: 'system',
+          disabled: false
         }
       });
+    }
 
-      for (const domainData of profileData.pbx_sip_profile_domains) {
-        await prisma.pbx_sip_profile_domains.upsert({
-          where: { id: domainData.id },
-          update: {
-            name: domainData.name,
-            alias: domainData.alias,
-            parse: domainData.parse,
-            synchronised: domainData.synchronised ? new Date(domainData.synchronised) : null,
-            updated: new Date(),
-            updated_by: 'system',
-            sip_profile_id: sipProfile.id,
-          },
-          create: {
-            id: domainData.id,
-            name: domainData.name,
-            alias: domainData.alias,
-            parse: domainData.parse,
-            synchronised: domainData.synchronised ? new Date(domainData.synchronised) : null,
-            created: new Date(),
-            updated: new Date(),
-            updated_by: 'system',
-            sip_profile_id: sipProfile.id,
-          }
+    // Read the JSON file
+    if (!fs.existsSync(JSON_FILE_PATH)) {
+      throw new Error(`JSON file not found at ${JSON_FILE_PATH}`);
+    }
+
+    const jsonData = JSON.parse(fs.readFileSync(JSON_FILE_PATH, 'utf-8'));
+    const dialplanEntries: PbxDialplanJsonEntry[] = jsonData.pbx_dialplans;
+
+    // Prepare data for seeding
+    const dataToSeed = dialplanEntries.map(entry => ({
+      id: entry.id,
+      app_id: entry.app_id,
+      hostname: entry.hostname,
+      context: domainMapping.fullDomain,  
+      category: entry.category,
+      name: entry.name,
+      number: entry.number,
+      destination: entry.destination || 'false',
+      dp_continue: entry.dp_continue || 'false',
+      xml: entry.xml,
+      sequence: new Decimal(entry.sequence),
+      enabled: entry.enabled || 'true',
+      description: entry.description,
+      created: new Date(entry.created),
+      updated: new Date(entry.updated),
+      updated_by: entry.updated_by || 'system',
+      domain_id_id: domainMapping.fullDomainUid
+    }));
+
+    // Create dialplans one by one to handle failures better
+    console.log(`Seeding ${dataToSeed.length} dialplan entries...`);
+    
+    for (const data of dataToSeed) {
+      try {
+        await prisma.pbx_dialplans.upsert({
+          where: { id: data.id },
+          update: data,
+          create: data
         });
-      }
-
-      for (const settingData of profileData.pbx_sip_profile_settings) {
-        await prisma.pbx_sip_profile_settings.upsert({
-          where: { id: settingData.id },
-          update: {
-            name: settingData.name,
-            value: settingData.value,
-            disabled: settingData.disabled,
-            description: settingData.description,
-            synchronised: settingData.synchronised ? new Date(settingData.synchronised) : null,
-            updated: new Date(),
-            updated_by: 'system',
-            sip_profile_id: sipProfile.id,
-          },
-          create: {
-            id: settingData.id,
-            name: settingData.name,
-            value: settingData.value,
-            disabled: settingData.disabled,
-            description: settingData.description,
-            synchronised: settingData.synchronised ? new Date(settingData.synchronised) : null,
-            created: new Date(),
-            updated: new Date(),
-            updated_by: 'system',
-            sip_profile_id: sipProfile.id,
-          }
-        });
+        console.log(`Successfully created/updated dialplan: ${data.name || data.id}`);
+      } catch (error) {
+        console.error(`Error creating dialplan ${data.name || data.id}:`, error);
       }
     }
 
-    // Seed Dialplan Defaults
-    for (const dialplanDefault of dialplanDefaultsData.pbx_dialplan_defaults) {
-      await prisma.pbx_dialplan_defaults.upsert({
-        where: { id: dialplanDefault.id },
-        update: {
-          app_id: dialplanDefault.app_id,
-          context: dialplanDefault.context,
-          category: 'Default',
-          name: dialplanDefault.name,
-          number: dialplanDefault.number,
-          destination: dialplanDefault.destination,
-          dp_continue: dialplanDefault.dp_continue,
-          dp_enabled: dialplanDefault.dp_enabled,
-          xml: dialplanDefault.xml,
-          sequence: dialplanDefault.sequence,
-          enabled: 'true',
-          description: dialplanDefault.description,
-          synchronised: new Date(),
-          updated: new Date(dialplanDefault.updated),
-          updated_by: dialplanDefault.updated_by,
-        },
-        create: {
-          id: dialplanDefault.id,
-          app_id: dialplanDefault.app_id,
-          context: dialplanDefault.context,
-          category: 'Default',
-          name: dialplanDefault.name,
-          number: dialplanDefault.number,
-          destination: dialplanDefault.destination,
-          dp_continue: dialplanDefault.dp_continue, 
-          dp_enabled: dialplanDefault.dp_enabled,
-          xml: dialplanDefault.xml,
-          sequence: dialplanDefault.sequence,
-          enabled: 'true',
-          description: dialplanDefault.description,
-          created: new Date(dialplanDefault.created),
-          updated: new Date(dialplanDefault.updated),
-          synchronised: new Date(),
-          updated_by: dialplanDefault.updated_by,
-        }
-      });
-    }
+    console.log('Dialplan seeding completed successfully');
 
-    // seed variables
-
-    for (const varsData of varsDefaultsData.pbx_vars) {
-      await prisma.pbx_vars.upsert({
-        where: { id: varsData.id },
-        update: {
-          id: varsData.id,
-          category: varsData.category,
-          name: varsData.name,
-          value: varsData.value,
-          command: varsData.command,
-          hostname: varsData.hostname,
-          enabled: varsData.enabled,
-          sequence: varsData.sequence,
-          description: varsData.description,
-          updated: new Date(),
-          synchronised: varsData.synchronised ? new Date(varsData.synchronised) : null,
-          updated_by: varsData.updated_by,
-        },
-        create: {
-          id: varsData.id,
-          category: varsData.category,
-          name: varsData.name,
-          value: varsData.value,
-          command: varsData.command,
-          hostname: varsData.hostname,
-          enabled: varsData.enabled,
-          sequence: varsData.sequence,
-          description: varsData.description,
-          created: new Date(varsData.created),
-          updated: new Date(varsData.updated),
-          synchronised: varsData.synchronised ? new Date(varsData.synchronised) : null,
-          updated_by: varsData.updated_by,
-        }
-      });
-    }
-
-    // seed Modules
-
-    for (const moduleDefault of modulesDefaultsData.pbx_modules) {
-      await prisma.pbx_modules.upsert({
-        where: { id: moduleDefault.id },
-        update: {
-          id: moduleDefault.id,
-          label: moduleDefault.label,
-          name: moduleDefault.name,
-          category: moduleDefault.category,
-          sequence: moduleDefault.sequence,
-          enabled: moduleDefault.enabled,
-          default_enabled: moduleDefault.default_enabled,
-          description: moduleDefault.description,
-          updated: new Date(moduleDefault.updated),
-          synchronised: moduleDefault.synchronised ? new Date(moduleDefault.synchronised) : null,
-          updated_by: moduleDefault.updated_by
-        },
-        create: {
-          id: moduleDefault.id,
-          label: moduleDefault.label,
-          name: moduleDefault.name,
-          category: moduleDefault.category,
-          sequence: moduleDefault.sequence,
-          enabled: moduleDefault.enabled,
-          default_enabled: moduleDefault.default_enabled,
-          description: moduleDefault.description,
-          created: new Date(moduleDefault.created),
-          updated: new Date(moduleDefault.updated),
-          synchronised: moduleDefault.synchronised ? new Date(moduleDefault.synchronised) : null,
-          updated_by: moduleDefault.updated_by
-        }
-      });
-    }
-
-    // seed default settings
-
-    for (const settingDefault of defaultSettingsData.pbx_default_settings) {
-      await prisma.pbx_default_settings.upsert({
-        where: { id: settingDefault.id },
-        update: {
-          id: settingDefault.id,
-          app_uuid: settingDefault.app_uuid,
-          category: settingDefault.category,
-          subcategory: settingDefault.subcategory,
-          value_type: settingDefault.value_type,
-          value: settingDefault.value,
-          sequence: settingDefault.sequence,
-          enabled: settingDefault.enabled,
-          description: settingDefault.description,
-          updated: new Date(settingDefault.updated),
-          synchronised: settingDefault.synchronised ? new Date(settingDefault.synchronised) : null,
-          updated_by: settingDefault.updated_by
-        },
-        create: {
-          id: settingDefault.id,
-          app_uuid: settingDefault.app_uuid,
-          category: settingDefault.category,
-          subcategory: settingDefault.subcategory,
-          value_type: settingDefault.value_type,
-          value: settingDefault.value,
-          sequence: settingDefault.sequence,
-          enabled: settingDefault.enabled,
-          description: settingDefault.description,
-          created: new Date(settingDefault.created),
-          updated: new Date(settingDefault.updated),
-          synchronised: settingDefault.synchronised ? new Date(settingDefault.synchronised) : null,
-          updated_by: settingDefault.updated_by
-        }
-      });
-    }
-
-
-    console.log('Seeded:', { 
-      defaultTenant, 
-      defaultDomain,
-      defaultAdmin,
-      userMapping,
-      domainMapping,
-      accessControls: 'Access Controls seeded',
-      sipProfiles: 'SIP Profiles seeded',
-      dialplanDefault: 'Dialplan Defaults seeded',
-      varsData: 'Variables seeded',
-      modulesDefault: 'Modules seeded',
-      settingDefault: 'Default Settings seeded',
-    })
   } catch (error) {
-    console.error('Error seeding database:', error)
-    process.exit(1)
+    console.error('Error during dialplan seeding:', error);
+    throw error;
   } finally {
-    await prisma.$disconnect()
+    await prisma.$disconnect();
   }
 }
 
-seed()
+// Run the seed
+seedDomainDialplans()
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

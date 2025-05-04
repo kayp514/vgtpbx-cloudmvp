@@ -125,11 +125,12 @@ export async function getDialplanByContext(
     callerContext,
     hostname,
     destinationNumber,
-    sipFromHost } = params;
+    sipFromHost 
+  } = params;
 
   try {
-    // Verify Domain and get Domain ID using domain_mapping (in public schema)
     const domainToCheck = sipFromHost || callerContext;
+    console.log(`Domain to check: ${domainToCheck}`);
     const domainMapping = await prisma.domain_mapping.findFirst({
       where: { fullDomain: domainToCheck },
       select: { fullDomainUid: true } 
@@ -174,7 +175,12 @@ export async function getDialplanByContext(
     const domainDialplans = await prisma.pbx_dialplans.findMany({
       where: {
         AND: [
-          { context: callerContext },
+          { 
+            OR: [
+              { context: domainToCheck },
+              { context: '${domain_name}' }
+            ]
+          },
           { enabled: 'true' },
           domainId ? { domain_id_id: domainId } : { domain_id_id: null },
           {
@@ -232,6 +238,7 @@ export async function getDialplanByContext(
     }).filter((dp): dp is DialplanResponse => dp !== null && !!dp.xml);
 
     return finalDialplans;
+
 
   } catch (error) {
     console.error(`Error fetching dialplan for context ${callerContext}:`, error);

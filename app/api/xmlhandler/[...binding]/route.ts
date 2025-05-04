@@ -225,7 +225,7 @@ async function handleDialplan(formData: FormData) {
   const callerContext = formData.get('Caller-Context') as string;
   const hostname = formData.get('FreeSWITCH-Hostname') as string;
   const destinationNumber = formData.get('destination_number') as string;
-  const sipFromHost = formData.get('sip_from_host') as string;
+  const sipFromHost = formData.get('variable_sip_from_host') as string;
 
 
   if (!callerContext || !hostname) {
