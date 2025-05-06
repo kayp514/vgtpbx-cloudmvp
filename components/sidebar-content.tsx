@@ -252,7 +252,7 @@ export function SidebarContent() {
           <div className="space-y-2">
             {/* Consistent spacing between section groups */}
             {renderSection(usersItems, "users")}
-            {/* {renderSection(dialplanItems, "dialplan")} */}
+            {renderSection(dialplanItems, "dialplan")}
             {/* {renderSection(voiceItems, "voice")} */}
             {/* {renderSection(messagingItems, "messaging")} */}
             {renderSection(extNumbersItems, "numbers")}

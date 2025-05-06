@@ -19,8 +19,13 @@ import type {
     pbx_sip_profile_settings,
     pbx_users,
     pbx_user_settings,
+    pbx_dialplan_details,
+    pbx_dialplans,
+    pbx_dialplan_defaults,
+    pbx_dialplan_excludes,
     Prisma
    } from '@prisma/client'
+   import { Decimal } from '@prisma/client/runtime/library'
   
   export interface AuthUserFull extends auth_user {}
   export interface AuthUserMapping extends auth_user_mapping {}
@@ -58,6 +63,17 @@ import type {
   export interface Module extends pbx_modules {}
   export interface Variable extends pbx_vars {}
   export interface Tenant extends auth_tenant {}
+  export interface Dialplans extends pbx_dialplans {
+    pbx_dialplan_details?: DialplanDetails[];
+    pbx_domains?: Domain | null;  
+  }
+  export interface DialplanDetails extends pbx_dialplan_details {
+    pbx_dialplans?: Dialplans;
+  }
+  export interface DialplanDefaults extends pbx_dialplan_defaults {}
+  export interface DialplanExcludes extends pbx_dialplan_excludes {
+    pbx_domains?: Domain | null;
+  }
 
 export class DatabaseError extends Error {
   constructor(message: string) {
@@ -867,4 +883,101 @@ export type ForwardingRule = (typeof forwardingRules)[number]
     name: string
   }
 
+  export interface DialplanCreateInput {
+    context?: string;
+    category?: string;
+    name?: string;
+    number?: string;
+    destination: string;
+    dp_continue: string;
+    enabled: string;
+    xml?: string;
+    sequence: Decimal;
+    description?: string;
+    domain_id_id?: string;
+    details?: DialplanDetailCreateInput[];
+  }
 
+  export interface DialplanDetailCreateInput {
+    tag: string;
+    type?: string;
+    data?: string;
+    dp_break?: string;
+    inline?: string;
+    group: Decimal;
+    sequence: Decimal;
+    enabled: string;
+    dialplan_id_id: string;
+  }
+
+
+  export type DialplanDisplay = Pick<Dialplans,
+  | 'id'
+  | 'context'
+  | 'category'
+  | 'name'
+  | 'number'
+  | 'enabled'
+  | 'sequence'
+  | 'description'
+>;
+
+
+export type DialplanUpdateInput = Partial<Omit<Dialplans, 'id' | 'created'>> & {
+  updated?: Date;
+  updated_by?: string;
+  details?: DialplanDetailCreateInput[];
+};
+
+export type DialplanXmlDisplay = Pick<Dialplans,
+  | 'id'
+  | 'context'
+  | 'name'
+  | 'number'
+  | 'sequence'
+  | 'xml'
+  | 'enabled'
+> & {
+  source: 'domain';
+  details?: Array<Pick<DialplanDetails,
+    | 'tag'
+    | 'type'
+    | 'data'
+    | 'inline'
+    | 'dp_break'
+    | 'group'
+    | 'sequence'
+    | 'enabled'
+  >>;
+};
+
+
+export type DialplanDefaultXmlDisplay = Pick<DialplanDefaults,
+  | 'id'
+  | 'context'
+  | 'name'
+  | 'number'
+  | 'sequence'
+  | 'xml'
+  | 'dp_enabled'
+> & {
+  source: 'default';
+};
+
+
+export type CombinedDialplanXmlDisplay = 
+  | DialplanXmlDisplay 
+  | DialplanDefaultXmlDisplay;
+
+
+  export function isDomainDialplan(
+    dialplan: CombinedDialplanXmlDisplay
+  ): dialplan is DialplanXmlDisplay {
+    return dialplan.source === 'domain';
+  }
+
+  export function isDefaultDialplan(
+    dialplan: CombinedDialplanXmlDisplay
+  ): dialplan is DialplanDefaultXmlDisplay {
+    return dialplan.source === 'default';
+  }

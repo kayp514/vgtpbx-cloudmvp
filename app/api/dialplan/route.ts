@@ -1,55 +1,46 @@
 import { NextResponse } from 'next/server'
-import { listDialplanRules } from '@/lib/db/queries'
 import { auth } from "@tern-secure/nextjs/server"
-import { PrismaClient } from '@prisma/client'
+import { getAllDialplans } from '@/lib/db/dialplan'
 
-const prisma = new PrismaClient()
-
-const tenantId = "default "
 
 export async function GET(request: Request) {
   try {
-    const { user } = await auth()
-
-    if (!user?.uid) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+    const { searchParams } = new URL(request.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const searchTerm = searchParams.get('search') || undefined
+    const enabled = searchParams.get('enabled') === 'true'
+    
+    const session = await auth()
+    
+    if (!session || !session.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const rules = await listDialplanRules(tenantId)
-    return NextResponse.json(rules)
-  } catch (error) {
-    console.error('Error fetching dialplan rules:', error)
-    return NextResponse.json(
-      { error: 'Internal Server Error' },
-      { status: 500 }
-    )
-  }
-}
+    const uid = session.user.uid
 
-export async function POST(request: Request) {
-  try {
-    const { user }= await auth()
-    if (!user?.uid){
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const skip = (page - 1) * limit
 
-    const data = await request.json()
-    const newRule = await prisma.dialplanRule.create({
+    const { domainDialplans, defaultDialplans, total } = await getAllDialplans({
+      uid,
+      skip,
+      take: limit,
+      searchTerm
+    })
+
+    return NextResponse.json({
       data: {
-        ...data,
-        tenantId: tenantId
+        domain: domainDialplans,
+        default: defaultDialplans,
+      },
+      pagination: {
+        total,
+        page,
+        limit,
       }
     })
-    
-    return NextResponse.json(newRule, { status: 201 })
   } catch (error) {
-    console.error('Error creating dialplan rule:', error)
+    console.error('Error fetching dialplan rules:', error)
     return NextResponse.json(
       { error: 'Internal Server Error' },
       { status: 500 }

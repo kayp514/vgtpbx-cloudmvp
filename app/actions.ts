@@ -17,7 +17,7 @@ import {
 
 import { 
   getUserDetailsByUid,
-  createPbxExtension
+  createPbxExtension,
  } from '@/lib/db/q'
 
 import type { 
@@ -30,7 +30,8 @@ import type {
   DatabaseUserInput,
   PbxUserCreateInput,
   PbxUserUpdateInput,
-  TenantCreateInput
+  TenantCreateInput,
+  DatabaseError
 } from "@/lib/db/types"
 
 import { generateUniqueAccountId } from '@/lib/generate-account';
