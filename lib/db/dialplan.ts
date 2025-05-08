@@ -250,7 +250,13 @@ export async function getDialplanByContext(
             destinationNumber ? {
               OR: [
                 { number: destinationNumber },
-                { number: null }
+                { number: '[ext]' }, 
+                { number: null },
+                destinationNumber.startsWith('*') ? 
+                { number: destinationNumber } : 
+                { number: { startsWith: '*' } },
+                { number: { contains: 'is_' } },
+                { number: { contains: '[' } }
               ]
             } : {}
           ]
@@ -289,7 +295,13 @@ export async function getDialplanByContext(
             destinationNumber ? {
               OR: [
                 { number: destinationNumber },
-                { number: null }
+                { number: '[ext]' }, 
+                { number: null },
+                destinationNumber.startsWith('*') ? 
+                { number: destinationNumber } : 
+                { number: { startsWith: '*' } },
+                { number: { contains: 'is_' } },
+                { number: { contains: '[' } }
               ]
             } : {}
           ]

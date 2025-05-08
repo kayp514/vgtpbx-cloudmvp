@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getDirectoryExtension } from '@/lib/db/q'
 import { getDialplanByContext, getSystemVariables } from '@/lib/db/dialplan'
 import { logToFreeswitchConsole } from '@/lib/switchLogger'
+import { setRequestContext, getEffectiveProfile } from '@/lib/requestContext'
 
 const genericNotFoundXml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <document type="freeswitch/xml">
@@ -19,31 +20,81 @@ const directoryNotFoundXml = `<?xml version="1.0" encoding="UTF-8" standalone="n
   </section>
 </document>`;
 
+interface DialplanDestinationType {
+  type: 'destination_number' | 'sip_to_user' | 'sip_req_user';
+  value: string;
+}
+
+async function checkRegistrationStatus(user: string, domain: string ): Promise<{ isRegistered: boolean, contact?: string }> {
+  try {
+    await logToFreeswitchConsole('INFO', `Checking registration status for ${user}@${domain}`);
+
+    const realtimeVgtUrl = process.env.REALTIME_VGT_URL || 'http://localhost:8081';
+    const profile = await getEffectiveProfile();
+    
+    const response = await fetch(`${realtimeVgtUrl}/registrations/sofia-contact`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        extension: user,
+        domain: domain,
+        profile: 'external'
+      })
+    });
+    
+    if (!response.ok) {
+      await logToFreeswitchConsole('WARNING', `Failed to check registration status for ${user}@${domain}${profile ? ` on ${profile}` : ''}: ${response.statusText}`);
+      return { isRegistered: false };
+    }
+
+    const data = await response.json();
+    // Check if registration exists and is active
+    if (data.success && 
+        data.registrations && 
+        data.registrations.status === 'Registered' && 
+        data.registrations.contact && 
+        data.registrations.contact.indexOf('error/user_not_registered') === -1) {
+      
+      await logToFreeswitchConsole('INFO', `Found registration for ${user}@${domain}${profile ? ` on ${profile}` : ''}`);
+      return { 
+        isRegistered: true, 
+        contact: data.registrations.contact 
+      };
+    }
+    
+    await logToFreeswitchConsole('INFO', `No valid registration found for ${user}@${domain}${profile ? ` on ${profile}` : ''}`);
+    return { isRegistered: false };
+  } catch (error) {
+    await logToFreeswitchConsole('ERROR', `Error checking registration status for ${user}@${domain}: ${error}`);
+    return { isRegistered: false };
+  }
+}
+
+
 async function handleDirectory(formData: FormData) {
   const purpose = formData.get('purpose') as string;
+  const action = formData.get('action') as string;
   const type = formData.get('type') as string;
   const key = formData.get('key') as string;
   const domainKeyValue = formData.get('key_value') as string;
-  const profileName = formData.get('profile') as string;
+  const profileName = formData.get('sip_profile') as string;
   const sip_auth_method = formData.get('sip_auth_method') as string;
   const from_user = formData.get('from_user') as string;
-
-  if (purpose === 'network-list') {
-   // console.log(`Handling Directory Request for network-list purpose (key: ${domainKeyValue}) - returning structured not found.`);
-    return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
-  }
-  
-  if (purpose === 'gateways') {
-   // console.log(`Handling Directory Request for gateways purpose (profile: ${profileName}) - returning structured not found.`);
-    return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
-  }
-
-  //console.log('Handling Directory Request for user lookup:', Object.fromEntries(formData));
   const user = formData.get('user') as string;
   const domain = formData.get('domain') as string;
+  const event_calling_function = formData.get('Event-Calling-Function') as string;
+  const event_calling_file = formData.get('Event-Calling-File') as string;
+  const dialed_extension = formData.get('dialed_extension') as string;
+  const as_channel = formData.get('as_channel') as string;
+
+
+  if (purpose === 'network-list' || purpose === 'gateways') {
+    return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
+  }
 
   if (!user || !domain) {
-    console.log('Missing user or domain for standard directory lookup.');
     await logToFreeswitchConsole('INFO', `XML Directory: Missing user or domain for standard directory lookup.`);
     return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }
@@ -53,100 +104,170 @@ async function handleDirectory(formData: FormData) {
   }
 
   try {
-    if (type === 'var' && key) {
-      const user = formData.get('user') as string;
-      const domain = formData.get('domain') as string;
-  
-      await logToFreeswitchConsole('INFO', `Directory var lookup: user=${user}, domain=${domain}, key=${key}`);
-  
-      const extension = await getDirectoryExtension(user, domain);
-      if (!extension) {
-        await logToFreeswitchConsole('INFO', `Directory var lookup: Extension not found for ${user}@${domain}`);
-        return new NextResponse(directoryNotFoundXml, { 
-          headers: { 'Content-Type': 'text/xml' } 
+    // Fetch extension data once
+    const extension = await getDirectoryExtension(user, domain);
+    if (!extension) {
+      await logToFreeswitchConsole('INFO', 
+        `Extension not found for ${user}@${domain}`
+      );
+      return new NextResponse(directoryNotFoundXml, {
+         headers: { 'Content-Type': 'text/xml' } 
         });
+    }
+
+    // Special handling for user_data_function from dialplan
+    if (event_calling_function === 'user_data_function' && type === 'var' && key) {      
+      let value: string | undefined;
+
+      // Map the requested key to extension properties
+      switch(key) {
+        case 'id':
+        case 'extension_uuid':
+          value = extension.id;
+          break;
+        case 'user_context':
+          value = extension.user_context || domain;
+          break;
+        // Handle boolean fields
+        case 'forward_all_enabled':
+        case 'forward_busy_enabled':
+        case 'forward_no_answer_enabled':
+        case 'forward_user_not_registered_enabled':
+        case 'follow_me_enabled':
+        case 'do_not_disturb':
+        case 'call_screen_enabled':
+        case 'directory_visible':
+        case 'directory_exten_visible':
+          value = extension[key] === true ? 'true' : 'false';
+          break;
+        case 'call_timeout':
+          value = extension[key]?.toString() || '30';
+          break;
+        // Handle forwarding destinations
+        case 'forward_all_destination':
+        case 'forward_busy_destination':
+        case 'forward_no_answer_destination':
+        case 'forward_user_not_registered_destination':
+          value = extension[key] || '';
+          break;
+        // Handle caller ID fields
+        case 'effective_caller_id_name':
+        case 'effective_caller_id_number':
+        case 'outbound_caller_id_name':
+        case 'outbound_caller_id_number':
+        case 'emergency_caller_id_name':
+        case 'emergency_caller_id_number':
+          value = extension[key] || '';
+          break;
+        // Handle other standard fields
+        case 'toll_allow':
+        case 'accountcode':
+        case 'user_record':
+        case 'hold_music':
+        case 'limit_max':
+        case 'limit_destination':
+        case 'call_group':
+          value = extension[key] || '';
+          break;
+        default:
+          value = extension[key as keyof typeof extension]?.toString() || '';
       }
-  
-      // Map FreeSWITCH expected variables to extension properties
-      const variableMap: Record<string, string | undefined> = {
-        'id': extension.id,
-        'extension_uuid': extension.id,
-        'user_context': extension.user_context || domain,
-        'effective_caller_id_name': extension.effective_caller_id_name,
-        'effective_caller_id_number': extension.effective_caller_id_number,
-        'outbound_caller_id_name': extension.outbound_caller_id_name,
-        'outbound_caller_id_number': extension.outbound_caller_id_number,
-        'emergency_caller_id_name': extension.emergency_caller_id_name,
-        'emergency_caller_id_number': extension.emergency_caller_id_number,
-        'directory_visible': extension.directory_visible,
-        'directory_exten_visible': extension.directory_exten_visible,
-        'limit_max': extension.limit_max,
-        'limit_destination': extension.limit_destination,
-        'call_group': extension.call_group,
-        'call_screen_enabled': extension.call_screen_enabled,
-        'hold_music': extension.hold_music,
-        'toll_allow': extension.toll_allow,
-        'accountcode': extension.accountcode,
-        'user_record': extension.user_record,
-        'forward_all_enabled': extension.forward_all_enabled,
-        'forward_all_destination': extension.forward_all_destination,
-        'forward_busy_enabled': extension.forward_busy_enabled,
-        'forward_busy_destination': extension.forward_busy_destination,
-        'forward_no_answer_enabled': extension.forward_no_answer_enabled,
-        'forward_no_answer_destination': extension.forward_no_answer_destination,
-        'forward_user_not_registered_enabled': extension.forward_user_not_registered_enabled,
-        'forward_user_not_registered_destination': extension.forward_user_not_registered_destination,
-        'do_not_disturb': extension.do_not_disturb,
-        'call_timeout': extension.call_timeout?.toString(),
-        'domain_name': domain,
-        'domain_uuid': extension.domain_uuid
-      };
-  
-      const requestedValue = variableMap[key];
-      const safeValue = (requestedValue === undefined || requestedValue === null) ? '' : String(requestedValue); 
-      await logToFreeswitchConsole('INFO', `Directory var lookup result: ${key}=${safeValue} for ${user}@${domain}`);
-  
+
+      const safeValue = value === null || value === undefined ? '' : String(value);
       const varXml = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
-      .ele('document', { type: 'freeswitch/xml' })
-        .ele('section', { name: 'directory' })
-          .ele('domain', { name: domain })
-            .ele('user', { id: user })
-              .ele('variables')
-                .ele('variable', {
-                   name: key, 
-                   value: safeValue 
-                  });
-  
-    
+        .ele('document', { type: 'freeswitch/xml' })
+          .ele('section', { name: 'directory' })
+            .ele('domain', { name: domain })
+              .ele('user', { id: user })
+                .ele('variables')
+                  .ele('variable', { name: key, value: safeValue });
 
+      const finalXml = varXml.end({ prettyPrint: true });
+      await logToFreeswitchConsole('INFO', `Directory var lookup result: ${key}=${safeValue} for ${user}@${domain}`);
+      return new NextResponse(finalXml, {         headers: { 'Content-Type': 'text/xml' }       });
+    }
 
-    
-    const finalXml = varXml.end({ prettyPrint: true });
-    console.log('Generated directory var XML:', finalXml);
-      await logToFreeswitchConsole('INFO', `Generated directory var XML for ${user}@${domain}`);
-  
+    // Handle user_outgoing_channel for call setup
+    if (event_calling_function === 'user_outgoing_channel' && action === 'user_call') {
+      // Check if user is registered in FreeSWITCH's registration table
+      const registrationStatus = await checkRegistrationStatus(user, domain);
+      
+      if (!registrationStatus.isRegistered) {
+        if (extension.forward_user_not_registered_enabled === 'true' && extension.forward_user_not_registered_destination) {
+          const dialString = `error/user_not_registered`;
+          // Build XML with forward destination
+          const xml = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
+            .ele('document', { type: 'freeswitch/xml' })
+              .ele('section', { name: 'directory' })
+                .ele('domain', { name: domain })
+                  .ele('user', { id: user })
+                    .ele('variables')
+                      .ele('variable', { name: 'forward_user_not_registered_enabled', value: 'true' })
+                      .ele('variable', { name: 'forward_user_not_registered_destination', value: extension.forward_user_not_registered_destination });
+
+          const finalXml = xml.end({ prettyPrint: true });
+          console.log('user_outgoing_channel XML:', finalXml)
+          await logToFreeswitchConsole('INFO', 
+            `User ${user}@${domain} not registered, forwarding to ${extension.forward_user_not_registered_destination}`
+          );
+          return new NextResponse(finalXml, {
+             headers: { 'Content-Type': 'text/xml' } 
+            });
+        } else {
+          // If no forwarding is configured, return not found
+          return new NextResponse(directoryNotFoundXml, { 
+            headers: { 'Content-Type': 'text/xml' } 
+          });
+        }
+      }
+
+      // User is registered, proceed with normal directory XML generation
+      const presenceId = `${user}@${domain}`;
+      let dialString = "";
+      
+      if (extension.do_not_disturb === "true") {
+        dialString = "error/user_busy";
+      } else {
+        // Use the actual contact information if available
+        if (registrationStatus.contact) {
+          dialString = `{sip_invite_domain=${domain},presence_id=${presenceId}}${registrationStatus.contact}`;
+        } else {
+          // Fallback to the extension's dial string or default
+          dialString = `{sip_invite_domain=${domain},presence_id=${presenceId}}${extension.dial_string || '${sofia_contact(*/${user}@${domain})}'}`;
+        }
+      }
+
+      // Generate directory XML with appropriate dial string
+      const xml = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
+        .ele('document', { type: 'freeswitch/xml' })
+          .ele('section', { name: 'directory' })
+            .ele('domain', { name: domain })
+              .ele('user', { id: user })
+                .ele('params')
+                  .ele('param', { name: 'dial-string', value: dialString });
+
+      const finalXml = xml.end({ prettyPrint: true });
+      await logToFreeswitchConsole('INFO', 
+        `Generated directory XML for registered user ${user}@${domain}`
+      );
       return new NextResponse(finalXml, { 
         headers: { 'Content-Type': 'text/xml' } 
       });
-  }
-    const extension = await getDirectoryExtension(user, domain);
-
-    if (!extension) {
-      console.log(`Extension '${user}' not found in domain '${domain}'`);
-      await logToFreeswitchConsole('INFO', `XML Directory: Extension '${user}' not found in domain '${domain}'`);
-      return new NextResponse(directoryNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
     }
 
-    const userContext = extension.user_context || domain
-    const presenceId = `${user}@${domain}`
+    // Regular directory lookup for registration, auth, etc.
+    const userContext = extension.user_context || domain;
+    const presenceId = `${user}@${domain}`;
 
-    let dialString = ""
+    let dialString = "";
     if (extension.do_not_disturb === "true") {
       dialString = "error/user_busy";
     } else if (extension.dialstring) {
-      dialString = extension.dialstring
+      dialString = extension.dialstring;
     } else {
-      dialString = `{sip_invite_domain=${domain},presence_id=${presenceId}}${extension.dial_string || '${sofia_contact(*/${user}@${domain})}'}`
+      // Don't check registration for non-call scenarios
+      // Use the standard dial string format
+      dialString = `{sip_invite_domain=${domain},presence_id=${presenceId}}${extension.dial_string || '${sofia_contact(*/${user}@${domain})}'}`;
     }
 
     const directoryXmlBuilder = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
@@ -170,16 +291,6 @@ async function handleDirectory(formData: FormData) {
         }
         break;
       case 'INVITE':
-        const presenceId = `${user}@${domain}`;
-        let dialString = "";
-
-        if (extension.do_not_disturb === "true") {
-          dialString = "error/user_busy";
-        } else if (extension.dialstring) {
-          dialString = extension.dialstring;
-        } else {
-          dialString = `{sip_invite_domain=${domain},presence_id=${presenceId}}${extension.dial_string || '${sofia_contact(*/${user}@${domain})}'}`
-        }
         params.ele('param', { name: 'dial-string', value: dialString });
         break;
 
@@ -243,7 +354,6 @@ async function handleDirectory(formData: FormData) {
       'accountcode': extension.accountcode
     };
 
-
     for (const [name, value] of Object.entries(conditionalVariables)) {
       if (value !== undefined && value !== null && value !== '') {
         variables.ele('variable', { name, value: value.toString() });
@@ -271,20 +381,19 @@ async function handleDirectory(formData: FormData) {
       variables.ele('variable', { name: 'do_not_disturb', value: 'true' });
     }
 
-
     variables.up();
 
     const directoryXml = directoryXmlBuilder.up().up().up().up().up().up().end({ prettyPrint: true });
 
-    //console.log(directoryXml);
-
-    //await logToFreeswitchConsole('INFO', `XML Directory: Generated XML '${directoryXml}' for user '${user}' in domain '${domain}'`);
-    
-    return new NextResponse(directoryXml, { headers: { 'Content-Type': 'text/xml' } });
+    return new NextResponse(directoryXml, { 
+      headers: { 'Content-Type': 'text/xml' } 
+    });
 
   } catch (error) {
     console.error('Error during directory lookup:', error);
-    await logToFreeswitchConsole('ERROR', `XML Directory: Error during lookup for '${user}@${domain}': ${error instanceof Error ? error.message : String(error)}`);
+    await logToFreeswitchConsole('ERROR', 
+      `XML Directory: Error during lookup for '${user}@${domain}': ${error instanceof Error ? error.message : String(error)}`
+    );
     
     const errorXml = 
     `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -298,119 +407,126 @@ async function handleDirectory(formData: FormData) {
   }
 }
 
-
 async function handleDialplan(formData: FormData) {
-  const callerContext = formData.get('Caller-Context') as string;
-  const hostname = formData.get('FreeSWITCH-Hostname') as string;
-  const sipToUser = formData.get('variable_sip_to_user') as string;
-  const sipReqUser = formData.get('variable_sip_req_user') as string;
-  const sipFromHost = formData.get('variable_sip_from_host') as string;
-  const domainNameVar = formData.get('domain_name') as string;
+  const params = {
+    callerContext: formData.get('Caller-Context') as string,
+    huntContext: formData.get('Hunt-Context') as string,
+    hostname: formData.get('FreeSWITCH-Hostname') as string,
+    profileName: formData.get('variable_sofia_profile_name') as string,
+    sipToUser: formData.get('variable_sip_to_user') as string,
+    sipReqUser: formData.get('variable_sip_req_user') as string,
+    sipFromHost: formData.get('variable_sip_from_host') as string,
+    callerDestNumber: formData.get('Caller-Destination-Number') as string,
+    userContext: formData.get('variable_user_context') as string,
+    domainUuid: formData.get('domain_uuid') as string,
+    domainName: formData.get('domain_name') as string || formData.get('variable_domain_name') as string,
+    callerId: formData.get('Caller-Caller-ID-Number') as string
+  };
 
-  const destinationNumber = sipToUser || sipReqUser || '';
-
-  const effectiveContext = sipFromHost || domainNameVar || callerContext; 
-
-  await logToFreeswitchConsole('INFO', `XML Dialplan Debug:
-    sipToUser: ${sipToUser}
-    sipReqUser: ${sipReqUser}
-    sipFromHost: ${sipFromHost}
-    callerContext: ${callerContext}
-    effectiveContext: ${sipFromHost || callerContext}
-  `);
+  setRequestContext({ profile: params.profileName });
 
 
-  if (!callerContext || !hostname) {
-    await logToFreeswitchConsole('WARNING', `XML Dialplan: Request missing Caller-Context or Hostname. Data: ${JSON.stringify(Object.fromEntries(formData))}`);
+  const effectiveContext = params.huntContext || params.callerContext;
+
+  if (!effectiveContext || !params.hostname) {
+    await logToFreeswitchConsole('WARNING', 
+      `XML Dialplan: Request missing essential parameters. Data: ${JSON.stringify(Object.fromEntries(formData))}`
+    );
     return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
   }
 
-  
-  try {
+  const destinationNumber = (() => {
+    const dialplanDestination: DialplanDestinationType = {
+      type: 'destination_number',
+      value: 'destination_number'
+    };
+    
+    if (dialplanDestination.type === 'sip_to_user' && params.sipToUser) {
+      return decodeURIComponent(params.sipToUser);
+    }
+    if (dialplanDestination.type === 'sip_req_user' && params.sipReqUser) {
+      return decodeURIComponent(params.sipReqUser);
+    }
+    return params.sipReqUser || params.sipToUser || params.callerDestNumber || '';
+  })();
 
-    await logToFreeswitchConsole('INFO', `XML Dialplan: Request for context '${effectiveContext}', dest: '${destinationNumber || 'N/A'}', host: '${hostname}'`);
+  try {
+    await logToFreeswitchConsole('INFO', 
+      `XML Dialplan Debug:
+      Context: ${effectiveContext}
+      Destination Number: ${destinationNumber}
+      Hostname: ${params.hostname}
+      Domain Name: ${params.domainName}
+      From Host: ${params.sipFromHost}`
+    );
 
     const [systemVars, dialplanEntries] = await Promise.all([
       getSystemVariables(),
       getDialplanByContext({
-        callerContext: callerContext, // Use the original context for fetching rules
-        hostname,
+        callerContext: effectiveContext,
+        hostname: params.hostname,
         destinationNumber,
-        sipFromHost // Pass sipFromHost for potential filtering/logic if needed
+        sipFromHost: params.sipFromHost,
       })
     ]);
 
-    await logToFreeswitchConsole('INFO', `Found ${dialplanEntries.length} dialplan entries`);
-    //for (const entry of dialplanEntries) {
-     // await logToFreeswitchConsole('INFO', `Dialplan entry: context=${entry.context}, sequence=${entry.sequence}`);
-    //}
-
     if (!dialplanEntries.length) {
-      //await logToFreeswitchConsole('INFO', `XML Dialplan: No matching dialplan rules or system variables found for context '${effectiveContext}'`);
-      return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
+      return new NextResponse(genericNotFoundXml, { 
+        headers: { 'Content-Type': 'text/xml' }
+       });
     }
 
     const docBuilder = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
       .ele('document', { type: 'freeswitch/xml' });
 
-    
     const sectionBuilder = docBuilder.ele('section', { 
       name: 'dialplan', 
       description: `Dialplan for ${effectiveContext}` 
     });
 
     const contextBuilder = sectionBuilder.ele('context', {
-      name: callerContext,
+      name: effectiveContext,
     });
-
 
     contextBuilder
     .ele('extension', { name: "domain_setup", continue: "true" })
       .ele('condition', { field: "${domain_name}", expression: "", break: "never" })
-        .ele('action', { 
-          application: "set",
-          data: `context=${effectiveContext}`,
-          inline: "true"
-        })
-      .up()
       .ele('action', { 
         application: "set",
-        data: `domain_name=${effectiveContext}`,
+        data: `domain_name=${params.sipFromHost || effectiveContext}`,
         inline: "true"
-      })
-      .up()
+      }).up()
+      .ele('action', { 
+        application: "set",
+        data: `destination_number=${destinationNumber}`,
+        inline: "true"
+      }).up()
     .up()
   .up();
 
+    systemVars.forEach(v => {
+      const name = typeof v.name === 'string' ? v.name : '';
+      const value = typeof v.value === 'string' ? v.value : '';
+      if (name) {
+          contextBuilder.ele('variable', { name, value });
+      }
+    });
 
-      systemVars.forEach(v => {
-        const name = typeof v.name === 'string' ? v.name : '';
-        const value = typeof v.value === 'string' ? v.value : '';
-        if (name) {
-            contextBuilder.ele('variable', { name, value });
+    dialplanEntries.forEach(entry => {
+      if (entry.xml) {
+        try {
+          const xmlFragment = create(entry.xml);
+          contextBuilder.import(xmlFragment);
+        } catch (parseError) {
+          console.error("XML Dialplan: Failed to parse or import raw XML fragment:", parseError, "\nFragment:", entry.xml);
+          contextBuilder.com(` Failed to import dialplan entry: ${parseError} `);
         }
-      });
+      } else {
+        console.log('WARNING', `XML Dialplan: Rule sequence ${entry.sequence} has no XML content.`);
+      }
+    });
 
-      dialplanEntries.forEach(entry => {
-        if (entry.xml) {
-          try {
-            const xmlFragment = create(entry.xml);
-            contextBuilder.import(xmlFragment);
-          } catch (parseError) {
-            console.error("XML Dialplan: Failed to parse or import raw XML fragment:", parseError, "\nFragment:", entry.xml);
-            //await logToFreeswitchConsole('ERROR', `XML Dialplan: Failed to parse/import XML fragment for rule ${entry.name || entry.id}. Error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
-            contextBuilder.com(` Failed to import dialplan entry: ${parseError} `);
-          }
-        } else {
-          console.log('WARNING', `XML Dialplan: Rule sequence ${entry.sequence} has no XML content.`);
-        }
-      });
-
-    const finalXml = docBuilder.end({ prettyPrint: true }); // Use prettyPrint: false for production
-    console.log('Generated Dialplan XML:', finalXml);
-
-    //await logToFreeswitchConsole('DEBUG', `XML Dialplan: Generated XML for context '${effectiveContext}':\n${finalXml}`);
-
+    const finalXml = docBuilder.end({ prettyPrint: true });
     return new NextResponse(finalXml, { headers: { 'Content-Type': 'text/xml' } });
 
   } catch (error) {
@@ -463,7 +579,6 @@ async function handleConfiguration(formData: FormData) {
   
   else if (section === 'configuration' && tagName === 'configuration' && keyName === 'name' && keyValue === 'sofia.conf') {
     try {
-      // Fetch SIP profiles and their associated domains and settings
       const sipProfiles = await prisma.pbx_sip_profiles.findMany({
         where: {
           disabled: false,
@@ -488,7 +603,6 @@ async function handleConfiguration(formData: FormData) {
         },
       });
 
-      // Start building the sofia.conf XML
       const sofiaConfig = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
         .ele('document', { type: 'freeswitch/xml' })
           .ele('section', { name: 'configuration' })
@@ -499,14 +613,11 @@ async function handleConfiguration(formData: FormData) {
               .up()
               .ele('profiles');
 
-      // Add each profile
       for (const profile of sipProfiles) {
         const profileElem = sofiaConfig.ele('profile', { name: profile.name });
         
-        // Add aliases section (empty like in Django)
         profileElem.ele('aliases').up();
 
-        // Add gateways section with just the include directive
         const gatewaysElem = profileElem.ele('gateways');
         gatewaysElem.ele('X-PRE-PROCESS', { 
           cmd: 'include', 
@@ -514,7 +625,6 @@ async function handleConfiguration(formData: FormData) {
         }).up();
         gatewaysElem.up();
 
-        // Add domains section
         const domainsElem = profileElem.ele('domains');
         for (const domain of profile.pbx_sip_profile_domains) {
           domainsElem.ele('domain', {
@@ -525,12 +635,11 @@ async function handleConfiguration(formData: FormData) {
         }
         domainsElem.up();
 
-        // Add settings section
         const settingsElem = profileElem.ele('settings');
         for (const setting of profile.pbx_sip_profile_settings) {
           settingsElem.ele('param', {
             name: setting.name,
-            value: setting.value || ''  // Handle null value
+            value: setting.value || ''
           }).up();
         }
         settingsElem.up();
@@ -538,7 +647,6 @@ async function handleConfiguration(formData: FormData) {
         profileElem.up();
       }
 
-      // Finalize and return the XML
       const configXml = sofiaConfig.end({ prettyPrint: true });
       console.log('Generated sofia.conf:', configXml);
       return new NextResponse(configXml, { headers: { 'Content-Type': 'text/xml' } });
@@ -549,8 +657,6 @@ async function handleConfiguration(formData: FormData) {
       return new NextResponse(errorXml, { status: 500, headers: { 'Content-Type': 'text/xml' } });
     }
   }
-
-
 
   const configXml = create({ version: '1.0', encoding: 'UTF-8', standalone: true })
     .ele('document', { type: 'freeswitch/xml' })
@@ -590,7 +696,9 @@ async function handleLanguages(formData: FormData) {
       .up()
     .end({ prettyPrint: true });
 
-  return new NextResponse(languagesXml, { headers: { 'Content-Type': 'text/xml' } });
+  return new NextResponse(languagesXml, { 
+    headers: { 'Content-Type': 'text/xml' } 
+  });
 }
 
 export async function POST(
@@ -606,7 +714,6 @@ export async function POST(
     return new NextResponse('Bad Request: Could not parse form data', { status: 400 });
   }
 
-  console.log(`Received XML Handler request for binding: ${binding}`);
   console.log('Form Data:', Object.fromEntries(formData));
 
   try {
@@ -626,6 +733,9 @@ export async function POST(
   } catch (error) {
     console.error(`Error handling binding ${binding}:`, error);
     const errorXml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?><document type="freeswitch/xml"><section name="result"><result status="error" data="Server error processing request" /></section></document>`;
-    return new NextResponse(errorXml, { status: 500, headers: { 'Content-Type': 'text/xml' } });
+    return new NextResponse(errorXml, { 
+      status: 500, 
+      headers: { 'Content-Type': 'text/xml' } 
+    });
   }
 }
