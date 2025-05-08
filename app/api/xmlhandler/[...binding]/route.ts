@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getDirectoryExtension } from '@/lib/db/q'
 import { getDialplanByContext, getSystemVariables } from '@/lib/db/dialplan'
 import { logToFreeswitchConsole } from '@/lib/switchLogger'
-import { setRequestContext, getEffectiveProfile } from '@/lib/requestContext'
+import { validate as isValidUUID } from 'uuid'
 
 const genericNotFoundXml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <document type="freeswitch/xml">
@@ -25,12 +25,11 @@ interface DialplanDestinationType {
   value: string;
 }
 
-async function checkRegistrationStatus(user: string, domain: string ): Promise<{ isRegistered: boolean, contact?: string }> {
+async function checkRegistrationStatus(user: string, domain: string, profile: string ): Promise<{ isRegistered: boolean, contact?: string }> {
   try {
     await logToFreeswitchConsole('INFO', `Checking registration status for ${user}@${domain}`);
 
     const realtimeVgtUrl = process.env.REALTIME_VGT_URL || 'http://localhost:8081';
-    const profile = await getEffectiveProfile();
     
     const response = await fetch(`${realtimeVgtUrl}/registrations/sofia-contact`, {
       method: 'POST',
@@ -40,12 +39,14 @@ async function checkRegistrationStatus(user: string, domain: string ): Promise<{
       body: JSON.stringify({
         extension: user,
         domain: domain,
-        profile: 'external'
+        profile: profile
       })
     });
     
     if (!response.ok) {
-      await logToFreeswitchConsole('WARNING', `Failed to check registration status for ${user}@${domain}${profile ? ` on ${profile}` : ''}: ${response.statusText}`);
+      await logToFreeswitchConsole('WARNING', 
+        `Failed to check registration status for ${user}@${domain}${profile ? ` on ${profile}` : ''}: ${response.statusText}`
+      );
       return { isRegistered: false };
     }
 
@@ -57,17 +58,23 @@ async function checkRegistrationStatus(user: string, domain: string ): Promise<{
         data.registrations.contact && 
         data.registrations.contact.indexOf('error/user_not_registered') === -1) {
       
-      await logToFreeswitchConsole('INFO', `Found registration for ${user}@${domain}${profile ? ` on ${profile}` : ''}`);
+      await logToFreeswitchConsole('INFO', 
+        `Found registration for ${user}@${domain}${profile ? ` on ${profile}` : ''}`
+      );
       return { 
         isRegistered: true, 
         contact: data.registrations.contact 
       };
     }
     
-    await logToFreeswitchConsole('INFO', `No valid registration found for ${user}@${domain}${profile ? ` on ${profile}` : ''}`);
+    await logToFreeswitchConsole('INFO', 
+      `No valid registration found for ${user}@${domain}${profile ? ` on ${profile}` : ''}`
+    );
     return { isRegistered: false };
   } catch (error) {
-    await logToFreeswitchConsole('ERROR', `Error checking registration status for ${user}@${domain}: ${error}`);
+    await logToFreeswitchConsole('ERROR', 
+      `Error checking registration status for ${user}@${domain}: ${error}`
+    );
     return { isRegistered: false };
   }
 }
@@ -80,6 +87,7 @@ async function handleDirectory(formData: FormData) {
   const key = formData.get('key') as string;
   const domainKeyValue = formData.get('key_value') as string;
   const profileName = formData.get('sip_profile') as string;
+  const profileNameFromCurlPool = formData.get('curl_pool_original_profile') as string; 
   const sip_auth_method = formData.get('sip_auth_method') as string;
   const from_user = formData.get('from_user') as string;
   const user = formData.get('user') as string;
@@ -88,6 +96,7 @@ async function handleDirectory(formData: FormData) {
   const event_calling_file = formData.get('Event-Calling-File') as string;
   const dialed_extension = formData.get('dialed_extension') as string;
   const as_channel = formData.get('as_channel') as string;
+
 
 
   if (purpose === 'network-list' || purpose === 'gateways') {
@@ -190,7 +199,7 @@ async function handleDirectory(formData: FormData) {
     // Handle user_outgoing_channel for call setup
     if (event_calling_function === 'user_outgoing_channel' && action === 'user_call') {
       // Check if user is registered in FreeSWITCH's registration table
-      const registrationStatus = await checkRegistrationStatus(user, domain);
+      const registrationStatus = await checkRegistrationStatus(user, domain, profileNameFromCurlPool);
       
       if (!registrationStatus.isRegistered) {
         if (extension.forward_user_not_registered_enabled === 'true' && extension.forward_user_not_registered_destination) {
@@ -423,7 +432,6 @@ async function handleDialplan(formData: FormData) {
     callerId: formData.get('Caller-Caller-ID-Number') as string
   };
 
-  setRequestContext({ profile: params.profileName });
 
 
   const effectiveContext = params.huntContext || params.callerContext;
@@ -673,33 +681,94 @@ async function handleConfiguration(formData: FormData) {
 }
 
 async function handleLanguages(formData: FormData) {
-  const language = formData.get('language') as string;
+  const lang = formData.get('lang') as string;
+  const macro_name = formData.get('macro_name') as string;
+  const sipFromHost = formData.get('sip_from_host') as string;
 
-  if (!language) {
-    return new NextResponse(genericNotFoundXml, { headers: { 'Content-Type': 'text/xml' } });
+  if (!lang || !macro_name) {
+    return new NextResponse(genericNotFoundXml, { 
+      headers: { 'Content-Type': 'text/xml' } 
+    });
   }
 
-  const languagesXml = create({ version: '1.0', encoding: 'UTF-8', standalone: true })
-    .ele('document', { type: 'freeswitch/xml' })
-      .ele('section', { name: 'languages' })
-        .ele('language', { name: language })
-          .ele('phrases')
-            .ele('phrase', { name: 'example_phrase' })
-              .ele('macros')
-                .ele('macro', { name: 'example_macro' })
-                  .ele('tag', { name: 'example_tag', value: 'example_value' }).up()
-                .up()
-              .up()
-            .up()
-          .up()
-        .up()
-      .up()
-    .end({ prettyPrint: true });
 
-  return new NextResponse(languagesXml, { 
-    headers: { 'Content-Type': 'text/xml' } 
-  });
+  const sounds_dir = '/usr/share/freeswitch/sounds'
+  const tts_engine = 'cepstral'
+  const tts_voice = 'callie'
+  const sound_dialect = 'us'
+
+  const sound_prefix_val = `${sounds_dir}/${lang}/${sound_dialect}/${tts_voice}`;
+  const say_module_val = lang
+
+  console.log(sound_prefix_val);
+
+  let phraseDetailsFromDb: Array<{ pfunction: string; data: string }> = [];
+
+  try {
+    if (isValidUUID(macro_name)) {
+      const phraseWithDetails = await prisma.pbx_phrases.findFirst({
+        where: {
+          id: macro_name, 
+          domain_uuid: sipFromHost,
+          language: lang,
+          enabled: 'true',
+        },
+        include: {
+          pbx_phrase_details: { 
+            orderBy: {
+              sequence: 'asc',
+            },
+          },
+        },
+      });
+      
+      if (phraseWithDetails?.pbx_phrase_details) {
+        phraseDetailsFromDb = phraseWithDetails.pbx_phrase_details.map(detail => ({
+          pfunction: detail.pfunction,
+          data: detail.data || '',
+        }));
+      }
+    }
+
+    const root = create({ version: '1.0', encoding: 'UTF-8', standalone: 'no' })
+    .ele('document', { type: 'freeswitch/xml' });
+
+    const section = root.ele('section', { name: 'languages' });
+    const languageNode = section.ele('language', {
+      name: lang,
+      'say-module': say_module_val,
+      'sound-prefix': sound_prefix_val,
+      'tts-engine': tts_engine,
+      'tts-voice': tts_voice,
+    });
+
+    const macrosNode = languageNode.ele('phrases').ele('macros'); 
+    const macroNode = macrosNode.ele('macro', { name: macro_name }); 
+    const inputNode = macroNode.ele('input', { pattern: '(.*)' });
+    const matchNode = inputNode.ele('match');
+
+    for (const detail of phraseDetailsFromDb) {
+      matchNode.ele('action', { function: detail.pfunction, data: detail.data });
+    }
+
+    const languagesXml = root.end({ prettyPrint: true });
+    console.log('Generated XML for languages:', languagesXml);
+    await logToFreeswitchConsole('INFO', `XML Languages: Successfully generated XML for lang='${lang}', macro_name='${macro_name}'.`);
+    return new NextResponse(languagesXml, {
+      headers: { 'Content-Type': 'text/xml' },
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await logToFreeswitchConsole('ERROR', `XML Languages: Error processing lang='${lang}', macro_name='${macro_name}': ${errorMessage}`);
+    console.error(`Error in handleLanguages for ${lang} / ${macro_name}:`, error);
+    return new NextResponse(genericNotFoundXml, { 
+      status: 500,
+      headers: { 'Content-Type': 'text/xml' },
+    });
+  }
 }
+
 
 export async function POST(
   request: NextRequest, 
