@@ -5,7 +5,9 @@ import { notFound } from "next/navigation"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
-async function getUser(id: string): Promise<PbxUserDisplay> {
+async function getUser(
+  id: string
+): Promise<PbxUserDisplay> {
   const cookieStore = await cookies()
 
   const res = await fetch(`${API_BASE_URL}/api/users/${id}`, {
@@ -57,8 +59,11 @@ interface EditUserPageProps {
   }
 }
 
-export default async function EditUserPage({ params }: EditUserPageProps) {
-  const user = await getUser(params.id)
+export default async function EditUserPage({ 
+  params 
+}: EditUserPageProps) {
+  const { id } = await params
+  const user = await getUser(id)
 
   return <UserEdit initialUser={user} />
 }

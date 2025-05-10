@@ -15,7 +15,9 @@ interface UserEditFormProps {
   }
 }
 
-export function UserEdit({ initialUser }: UserEditFormProps) {
+export function UserEdit({
+   initialUser 
+}: UserEditFormProps) {
   const router = useRouter()
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
   const [isPbxSubmitting, setIsPbxSubmitting] = useState(false)

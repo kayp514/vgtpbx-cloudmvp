@@ -244,6 +244,8 @@ export async function getPbxExtensions(uid: string, options?: {
         e.extension,
         e.effective_caller_id_name,
         e.effective_caller_id_number,
+        e.outbound_caller_id_name,
+        e.outbound_caller_id_number,
         e.call_group,
         e.user_context,
         e.disabled,

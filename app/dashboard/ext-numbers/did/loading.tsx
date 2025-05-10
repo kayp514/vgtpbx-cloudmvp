@@ -5,8 +5,8 @@ export default function Loading() {
   return (
     <PageWrapper>
       <PageHeader 
-        title="DID Numbers" 
-        description="Manage your direct inward dialing phone numbers"
+        title="Numbers" 
+        description="Manage your DID and EXT"
       />
         <DIDSkeleton />
     </PageWrapper>

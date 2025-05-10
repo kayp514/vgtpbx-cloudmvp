@@ -5,7 +5,6 @@ import { PageWrapper } from "@/components/page-layout"
 import { UsersHeader } from "@/components/headers"
 import { UsersSearch } from "@/components/search"
 import { UsersTable } from "@/components/table-users"
-import { UserForm } from "@/components/form-user"
 import type { PbxUserDisplay } from "@/lib/db/types"
 import { 
   toggleUserStatus, 
@@ -14,7 +13,6 @@ import {
   updateUser
 } from "@/app/actions"
 import { toast } from "sonner"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,

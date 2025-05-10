@@ -73,7 +73,7 @@ export async function addExtension(formData: FormData) {
     })
 
     // Revalidate the extensions page to show the new extension
-    revalidatePath('/dashboard/ext-numbers/extensions')
+    revalidatePath('/dashboard/ext-numbers/did')
     
     return { 
       success: true, 

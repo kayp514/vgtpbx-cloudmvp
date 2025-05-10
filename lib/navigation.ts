@@ -183,17 +183,17 @@ export const navigation: NavItem[] = [
     section: "numbers",
     roles: ["admin", "superuser", "member"],
     submenu: [
-      {
-        name: "Extensions",
-        href: "/dashboard/ext-numbers/extensions",
-        icon: Hash,
-        roles: ["admin", "superuser", "member"],
-        permission: "numbers.extensions",
-      },
+     // {
+     //   name: "Extensions",
+     //   href: "/dashboard/ext-numbers/extensions",
+     //   icon: Hash,
+     //   roles: ["admin", "superuser", "member"],
+    //    permission: "numbers.extensions",
+     // },
       {
         name: "DID Numbers",
         href: "/dashboard/ext-numbers/did",
-        icon: Phone,
+        icon: Hash,
         roles: ["admin", "superuser", "member"],
         permission: "numbers.did",
       },

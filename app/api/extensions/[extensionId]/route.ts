@@ -3,10 +3,16 @@ import { auth } from '@tern-secure/nextjs/server'
 import { DatabaseError, AuthorizationError } from '@/lib/errors'
 import { getPbxExtension } from '@/lib/db/q'
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string; extensionId: string } }
-) {
+interface RouteParams {
+  params: {
+    id: string
+    extensionId: string
+  }
+}
+
+export async function GET(request: Request, {
+   params 
+}: RouteParams) {
   try {
     const session = await auth()
     if (!session || !session.user) {

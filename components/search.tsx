@@ -35,6 +35,15 @@ interface UsersSearchProps {
   setFilterStatus: (status: string) => void
 }
 
+interface DidExtSearchProps {
+  searchQuery: string
+  setSearchQuery: (query: string) => void
+  filterRegion: string
+  setFilterRegion: (role: string) => void
+  filterStatus: string
+  setFilterStatus: (status: string) => void
+}
+
 interface TenantSearchProps {
   searchQuery: string
   setSearchQuery: (query: string) => void
@@ -139,6 +148,56 @@ export function UsersSearch({
             <SelectItem value="superuser">Superuser</SelectItem>
             <SelectItem value="staff">Staff</SelectItem>
             <SelectItem value="member">Member</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-full sm:w-[150px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  )
+}
+
+
+export function DidExtSearch({
+  searchQuery,
+  setSearchQuery,
+  filterRegion,
+  setFilterRegion,
+  filterStatus,
+  setFilterStatus,
+}: DidExtSearchProps) {
+  return (
+    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
+      <div className="relative flex-1 w-full sm:max-w-md">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Search by numbers or region..."
+          className="pl-8 w-full"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
+      <div className="flex items-center gap-2 w-full sm:w-auto">
+        <Select value={filterRegion} onValueChange={setFilterRegion}>
+          <SelectTrigger className="w-full sm:w-[150px]">
+            <SelectValue placeholder="Filter by region" />
+          </SelectTrigger>
+          <SelectContent>
+              <SelectItem value="all">All Regions</SelectItem>
+              <SelectItem value="us">US</SelectItem>
+              <SelectItem value="ca">CA</SelectItem>
+              <SelectItem value="uk">UK</SelectItem>
           </SelectContent>
         </Select>
 

@@ -1,29 +1,59 @@
 'use client'
 
 import { useState } from "react"
-import { PageHeader, PageWrapper } from "@/components/page-layout"
+import { PageWrapper } from "@/components/page-layout"
+import { DidExtHeader } from "./headers"
 import { DIDTable } from "@/components/table-did"
-import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
 import { DIDForm } from "@/components/form-did"
+import type { DidExtDisplay} from "@/lib/db/types"
+import { DidExtSearch } from "@/components/search"
+import { ExtensionForm } from "@/components/form-extension"
+import { useAuth } from "@tern-secure/nextjs"
 
-export function Did() {
+interface DidExtProps {
+  didExt: DidExtDisplay[]
+}
+
+export function Did({ 
+  didExt 
+}: DidExtProps) {
+    const { userId } = useAuth()
     const [showAddForm, setShowAddForm] = useState(false)
     const [editingDID, setEditingDID] = useState<string | null>(null)
+    const [showAddExtensionForm, setShowAddExtensionForm] = useState(false)
+    const [editingExtension, setEditingExtension] = useState<string | null>(null)
+    const [searchQuery, setSearchQuery] = useState("")
+    const [filterRegion, setFilterRegion] = useState<string>("all")
+    const [filterStatus, setFilterStatus] = useState<string>("all")
+
+    const handleCreate = () => {
+      setShowAddForm(true)
+    }
+    
+    const handleCreateExtension = () => {
+      setShowAddExtensionForm(true)
+    }
+
+    if(!userId) return null
     
     return (
     <PageWrapper>
-      <PageHeader 
-       title="DID Numbers" 
-       description="Manage your direct inward dialing phone numbers"
-       actions={
-       <Button className="gap-2" onClick={() => setShowAddForm(true)}>
-        <Plus className="h-4 w-4" />
-        Add Number
-        </Button>
-        }
+      <DidExtHeader
+        onCreate={handleCreate}
+        onCreateExtensionOnly={handleCreateExtension}
+      />
+      <DidExtSearch
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        filterRegion={filterRegion}
+        setFilterRegion={setFilterRegion}
+        filterStatus={filterStatus}
+        setFilterStatus={setFilterStatus}
         />
-        <DIDTable onEdit={(didId) => setEditingDID(didId)} />
+      <DIDTable
+        did={didExt}
+        onEdit={(didId) => setEditingDID(didId)} 
+      />
 
      {/* Add/Edit DID Dialog */}
       {(showAddForm || editingDID) && (
@@ -32,6 +62,18 @@ export function Did() {
           onClose={() => {
             setShowAddForm(false)
             setEditingDID(null)
+          }}
+        />
+      )}
+
+      {/* Add/Edit Extension Dialog */}
+      {(showAddExtensionForm || editingExtension) && (
+        <ExtensionForm
+          uid={userId}
+          extensionId={editingExtension}
+          onClose={() => {
+            setShowAddExtensionForm(false)
+            setEditingExtension(null)
           }}
         />
       )}

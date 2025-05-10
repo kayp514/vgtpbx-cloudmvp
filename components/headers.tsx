@@ -49,6 +49,18 @@ interface UsersHeaderProps {
   onBulkDelete: () => void
 }
 
+interface DidExtHeaderProps {
+  selectedCount?: number
+  onCreate: () => void
+  onCreateExtensionOnly: () => void
+  onBulkDelete?: () => void
+}
+
+interface DidExtEditHeaderProps {
+  did: any
+  onCancel: () => void
+}
+
 interface UserEditHeaderProps {
   user: PbxUserDisplay
 }
@@ -203,6 +215,34 @@ export function UsersHeader({ selectedCount, onCreateUser, onBulkDelete }: Users
   )
 }
 
+export function DidExtHeader({ 
+  selectedCount, 
+  onCreate,
+  onCreateExtensionOnly, 
+  onBulkDelete 
+}: DidExtHeaderProps) {
+  return (
+    <PageHeader
+      title="Numbers"
+      description="Manage your DID and Extensions"
+      actions={
+        <>
+          <Button size="sm" onClick={onCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Number
+          </Button>
+          <Button size="sm" onClick={onCreateExtensionOnly}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Extension Only
+          </Button>
+        </>
+      }
+    />
+  )
+}
+
+
+
 
 export function UserEditHeader({ user }: UserEditHeaderProps) {
   return (
@@ -211,10 +251,10 @@ export function UserEditHeader({ user }: UserEditHeaderProps) {
       description={`Edit settings for ${user.auth_user.displayName}`}
       actions={
         <>
-          <Button variant="outline" size="sm" asChild>
+          <Button size="sm" >
             <a href="/dashboard/users">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Users
+              Back
             </a>
           </Button>
         </>
@@ -222,6 +262,28 @@ export function UserEditHeader({ user }: UserEditHeaderProps) {
     />
   )
 }
+
+
+export function DidEditHeader({ 
+  did,
+  onCancel
+}: DidExtEditHeaderProps ) {
+  return (
+    <PageHeader
+      title="Edit Number"
+      description={`Edit settings for ${did.extension}`}
+      actions={
+        <>
+          <Button size="sm" onClick={onCancel}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+        </>
+      } 
+    />
+  )
+}
+
 
 
 export function ExtensionsHeader({ selectedCount = 0 }: ExtensionsHeaderProps) {
