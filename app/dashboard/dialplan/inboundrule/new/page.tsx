@@ -284,7 +284,7 @@ export default function NewInboundRulePage() {
               )}
               <p className="text-sm text-muted-foreground">
                 {destinationType === 'EXTENSION' ? 'Enter extension number' :
-                 destinationType === 'RING_GROUP' ? 'Enter ring group ID' :
+                 destinationType === 'RING_GROUP' ? 'Enter ring-3 group ID' :
                  destinationType === 'IVR' ? 'Enter IVR menu ID' :
                  'Enter voicemail box ID'}
               </p>

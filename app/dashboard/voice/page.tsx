@@ -248,7 +248,7 @@ export default function VoicePage() {
                   <Label>Ring Strategy</Label>
                   <Select>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select ring strategy" />
+                      <SelectValue placeholder="Select ring-3 strategy" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="simultaneous">Ring All</SelectItem>

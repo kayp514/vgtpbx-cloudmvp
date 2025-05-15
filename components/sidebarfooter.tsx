@@ -63,7 +63,7 @@ export function SidebarUserFooter({
   if (!user) return null
 
   return (
-    <SidebarFooter className={cn("border-t bg-gradient-to-b from-muted/10 to-muted/30", className)}>
+    <SidebarFooter className={cn("border-t bg-linear-to-b from-muted/10 to-muted/30", className)}>
       <div className={cn("p-2", isCollapsed && "p-1.5")}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -72,7 +72,7 @@ export function SidebarUserFooter({
                 variant="ghost"
                 className="w-full h-8 p-0 rounded-full hover:bg-muted/50 transition-all duration-200"
               >
-                <Avatar className="h-7 w-7 border border-primary/10 shadow-sm">
+                <Avatar className="h-7 w-7 border border-primary/10 shadow-xs">
                   <AvatarImage src={user.avatarUrl || "/placeholder-user.jpg"} alt={user.name} />
                   <AvatarFallback className="bg-primary/10 text-primary font-medium text-xs">
                     {user.name.substring(0, 2).toUpperCase()}
@@ -85,7 +85,7 @@ export function SidebarUserFooter({
                 className="w-full justify-between items-center h-auto py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-all duration-200 group"
               >
                 <div className="flex items-center gap-2">
-                  <Avatar className="h-7 w-7 border border-primary/10 shadow-sm transition-all duration-200 group-hover:ring-primary/5">
+                  <Avatar className="h-7 w-7 border border-primary/10 shadow-xs transition-all duration-200 group-hover:ring-primary/5">
                     <AvatarImage src={user.avatarUrl || "/placeholder-user.jpg"} alt={user.name} />
                     <AvatarFallback className="bg-primary/10 text-primary font-medium text-xs">
                       {user.name.substring(0, 2).toUpperCase()}

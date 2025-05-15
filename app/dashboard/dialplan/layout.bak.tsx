@@ -22,7 +22,7 @@ export default function DialplanLayout({
           </Tabs>
         </div>
       </div>
-      <div className="flex-grow">
+      <div className="grow">
         {children}
       </div>
     </div>

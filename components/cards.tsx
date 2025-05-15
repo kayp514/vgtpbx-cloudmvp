@@ -56,7 +56,7 @@ export function CallForwardingCard({ extension, handleForwardingChange }: CallFo
   }
 
   return (
-    <Card className="shadow-sm">
+    <Card className="shadow-xs">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center text-lg">
           Call Forwarding
@@ -122,7 +122,7 @@ export function CallForwardingCard({ extension, handleForwardingChange }: CallFo
                   onValueChange={(value) => handleForwardingChange("ringTime", Number.parseInt(value))}
                 >
                   <SelectTrigger id="ringTime" className="h-9 max-w-md">
-                    <SelectValue placeholder="Select ring time" />
+                    <SelectValue placeholder="Select ring-3 time" />
                   </SelectTrigger>
                   <SelectContent>
                     {[10, 15, 20, 25, 30, 45, 60].map((time) => (
@@ -151,7 +151,7 @@ export function ExtensionSettingsCard({
 }: ExtensionSettingsCardProps) {
   const extensionUser = extension?.pbx_extension_users?.[0];
   return (
-    <Card className="shadow-sm">
+    <Card className="shadow-xs">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center text-lg">
           Extension
@@ -378,7 +378,7 @@ export function AccountStatusCard({
    handleChange 
 }: AccountStatusCardProps) {
   return (
-    <Card className="shadow-sm">
+    <Card className="shadow-xs">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center text-lg">
           Account Status

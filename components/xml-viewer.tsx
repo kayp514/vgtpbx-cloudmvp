@@ -285,7 +285,7 @@ export function XmlViewer({ xml: initialXml, onSave, readOnly = false }: XmlView
       <div key={`element-${index}`}>
         <div className="flex items-start" style={{ marginLeft: `${node.depth * 20}px` }}>
           {hasChildren && (
-            <button onClick={() => toggleCollapse(node)} className="mr-1 mt-1 focus:outline-none">
+            <button onClick={() => toggleCollapse(node)} className="mr-1 mt-1 focus:outline-hidden">
               {node.collapsed ? (
                 <ChevronRight className="h-3 w-3 text-muted-foreground" />
               ) : (

@@ -181,11 +181,11 @@ export function SidebarContent() {
     }
   
     return (
-      <Sidebar className="border-r shadow-sm bg-gradient-to-b from-background to-muted/20 h-screen transition-all duration-300 ease-in-out">
+      <Sidebar className="border-r shadow-xs bg-linear-to-b from-background to-muted/20 h-screen transition-all duration-300 ease-in-out">
         <SidebarHeader className="border-b border-border/60">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-xs ring-1 ring-primary/20">
                 <SwitchCamera className="h-5 w-5" />
               </div>
               {!isCollapsed && (
@@ -262,7 +262,7 @@ export function SidebarContent() {
           </div>
         </SidebarContentPrimitive>
   
-        <SidebarFooter className="border-t bg-gradient-to-b from-muted/10 to-muted/30">
+        <SidebarFooter className="border-t bg-linear-to-b from-muted/10 to-muted/30">
           {user && (
             <SidebarUserFooter
               user={{
