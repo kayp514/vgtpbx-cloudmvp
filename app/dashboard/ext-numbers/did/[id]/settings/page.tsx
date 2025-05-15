@@ -47,7 +47,5 @@ export default async function EditDIDPage({
   const { id } = params
   const did = await getDidExt(id)
 
-  return (
-    <DIDEditPage initialDid={did} />
-  )
+  return <DIDEditPage initialDid={did} />
 }

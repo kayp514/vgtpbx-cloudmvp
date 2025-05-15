@@ -6,7 +6,9 @@ const config = {
     './pages/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
+    './src/**/*.{js,ts,jsx,tsx,mdx}',
+	"./node_modules/@tern-secure/**/*.{js,ts,jsx,tsx}",  // Adjust the package name
+    "./node_modules/@tern-secure/*/dist/**/*.{js,ts,jsx,tsx}"
 	],
   theme: {
   	container: {
@@ -23,6 +25,8 @@ const config = {
   			ring: 'hsl(var(--ring))',
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
+		    //background: "var(--background)",
+            //foreground: "var(--foreground)",
   			primary: {
   				DEFAULT: 'hsl(var(--primary))',
   				foreground: 'hsl(var(--primary-foreground))'
